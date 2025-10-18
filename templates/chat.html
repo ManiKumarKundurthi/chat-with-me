@@ -566,98 +566,7 @@
         let isAdmin = false;
         let username = '';
         let availableRooms = {};
-        let sessionId = '';
         let currentRoomId = '';
-        let isIntentionalDisconnect = false;
-        
-        // Generate persistent room ID based on username
-        function generateUserRoomId(username) {
-            let hash = 0;
-            for (let i = 0; i < username.length; i++) {
-                hash = ((hash << 5) - hash) + username.charCodeAt(i);
-                hash = hash & hash;
-            }
-            return 'room_' + Math.abs(hash).toString(36) + '_' + username.toLowerCase().replace(/[^a-z0-9]/g, '').substring(0, 5);
-        }
-        
-        function getSessionId() {
-            let sid = sessionStorage.getItem('chatSessionId');
-            if (!sid) {
-                sid = 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-                sessionStorage.setItem('chatSessionId', sid);
-            }
-            return sid;
-        }
-        
-        function saveMessages() {
-            const messagesDiv = document.getElementById('messages');
-            localStorage.setItem('chatMessages_' + sessionId, messagesDiv.innerHTML);
-            localStorage.setItem('chatUsername', username);
-            localStorage.setItem('chatIsAdmin', isAdmin);
-            localStorage.setItem('chatRoomId', currentRoomId);
-        }
-        
-        function loadMessages() {
-            const savedMessages = localStorage.getItem('chatMessages_' + sessionId);
-            if (savedMessages) {
-                document.getElementById('messages').innerHTML = savedMessages;
-                const messagesDiv = document.getElementById('messages');
-                messagesDiv.scrollTop = messagesDiv.scrollHeight;
-            }
-        }
-        
-        function clearMessages() {
-            localStorage.removeItem('chatMessages_' + sessionId);
-            localStorage.removeItem('chatUsername');
-            localStorage.removeItem('chatIsAdmin');
-            localStorage.removeItem('chatRoomId');
-            sessionStorage.removeItem('chatSessionId');
-        }
-        
-        function checkExistingSession() {
-            sessionId = getSessionId();
-            const savedUsername = localStorage.getItem('chatUsername');
-            const savedIsAdmin = localStorage.getItem('chatIsAdmin');
-            
-            if (savedUsername) {
-                username = savedUsername;
-                isAdmin = (savedIsAdmin === 'true');
-                
-                if (!isAdmin) {
-                    currentRoomId = generateUserRoomId(username);
-                }
-                
-                document.getElementById('loginBox').classList.add('hidden');
-                document.getElementById('chatBox').classList.remove('hidden');
-                loadMessages();
-                
-                socket = io();
-                setupSocketListeners();
-                
-                if (!isAdmin && currentRoomId) {
-                    socket.emit('join_chat', { 
-                        username, 
-                        password: '',
-                        room_id: currentRoomId,
-                        is_reconnect: true
-                    });
-                } else {
-                    socket.emit('join_chat', { username, password: '' });
-                }
-                
-                return true;
-            }
-            return false;
-        }
-        
-        function selectRole(role) {
-            document.querySelectorAll('.role-btn').forEach(btn => btn.classList.remove('active'));
-            event.target.classList.add('active');
-            
-            isAdmin = (role === 'admin');
-            document.getElementById('userFields').classList.toggle('hidden', isAdmin);
-            document.getElementById('adminFields').classList.toggle('hidden', !isAdmin);
-        }
         
         function connect() {
             username = isAdmin ? 'DARK' : document.getElementById('username').value.trim();
@@ -673,27 +582,13 @@
                 return;
             }
             
-            sessionId = getSessionId();
-            
-            if (!isAdmin) {
-                currentRoomId = generateUserRoomId(username);
-            }
-            
             socket = io();
             setupSocketListeners();
             
-            socket.emit('join_chat', { 
-                username, 
-                password,
-                room_id: isAdmin ? null : currentRoomId,
-                is_reconnect: false
-            });
+            socket.emit('join_chat', { username, password });
             
             document.getElementById('loginBox').classList.add('hidden');
             document.getElementById('chatBox').classList.remove('hidden');
-            
-            localStorage.setItem('chatUsername', username);
-            localStorage.setItem('chatIsAdmin', isAdmin);
         }
         
         function setupSocketListeners() {
@@ -703,7 +598,7 @@
             
             socket.on('auth_failed', (data) => {
                 alert(data.message);
-                disconnectChat();
+                location.reload();
             });
             
             socket.on('admin_connected', (data) => {
@@ -719,7 +614,6 @@
                 showStatus(data.message, 'waiting');
                 document.getElementById('welcomeMessage').classList.remove('hidden');
                 addMessage(data.message, 'system');
-                saveMessages();
             });
             
             socket.on('admin_joined', (data) => {
@@ -776,6 +670,15 @@
             });
         }
         
+        function selectRole(role) {
+            document.querySelectorAll('.role-btn').forEach(btn => btn.classList.remove('active'));
+            event.target.classList.add('active');
+            
+            isAdmin = (role === 'admin');
+            document.getElementById('userFields').classList.toggle('hidden', isAdmin);
+            document.getElementById('adminFields').classList.toggle('hidden', !isAdmin);
+        }
+        
         function updateRoomDropdown() {
             const dropdown = document.getElementById('roomDropdown');
             const roomInfo = document.getElementById('roomInfo');
@@ -795,7 +698,7 @@
                     const option = document.createElement('option');
                     option.value = roomId;
                     const time = new Date(info.created_at).toLocaleTimeString();
-                    option.textContent = `${info.username} (${roomId.substring(0, 15)}... at ${time})`;
+                    option.textContent = `${info.username} (${roomId.substring(0, 8)}... at ${time})`;
                     dropdown.appendChild(option);
                 });
             }
@@ -837,8 +740,6 @@
             messageDiv.textContent = text;
             messagesDiv.appendChild(messageDiv);
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
-            
-            saveMessages();
         }
         
         function showStatus(message, type) {
@@ -848,17 +749,10 @@
         }
         
         function disconnectChat() {
-            isIntentionalDisconnect = true;
-            
             if (socket) {
-                socket.emit('intentional_disconnect', { 
-                    username,
-                    room_id: currentRoomId
-                });
                 socket.disconnect();
             }
             
-            clearMessages();
             document.getElementById('chatBox').classList.add('hidden');
             document.getElementById('loginBox').classList.add('hidden');
             showThankYouScreen();
@@ -873,8 +767,8 @@
                     <h1 style="color: #4ade80; margin-bottom: 15px; font-size: 32px;">Thank You for Chatting!</h1>
                     <p style="color: #b0b3b8; font-size: 16px; line-height: 1.8; margin-bottom: 30px;">
                         ${isAdmin ? 
-                            'Your session has ended. All chat history has been cleared.' : 
-                            'We appreciate you taking the time to connect with us. Your chat session has ended and all history has been cleared for your privacy.'}
+                            'Your session has ended.' : 
+                            'We appreciate you taking the time to connect with us. Your chat session has ended.'}
                     </p>
                     
                     <div style="background: linear-gradient(135deg, #1e3a5f 0%, #1e40af 100%); padding: 25px; border-radius: 12px; margin-bottom: 30px; border: 2px solid #0084ff; box-shadow: 0 4px 20px rgba(0, 132, 255, 0.3);">
@@ -906,28 +800,6 @@
             
             container.innerHTML = thankYouHTML;
         }
-        
-        window.addEventListener('DOMContentLoaded', () => {
-            checkExistingSession();
-        });
-        
-        // Only save on refresh, not on intentional disconnect
-        window.addEventListener('beforeunload', () => {
-            if (socket && socket.connected && !isIntentionalDisconnect) {
-                saveMessages();
-            }
-        });
-        
-        // Detect tab/browser close (not refresh)
-        window.addEventListener('pagehide', () => {
-            if (!isIntentionalDisconnect && socket && socket.connected) {
-                // Real page close - tell server immediately
-                socket.emit('page_closed', {
-                    username,
-                    room_id: currentRoomId
-                });
-            }
-        });
     </script>
 </body>
 </html>
