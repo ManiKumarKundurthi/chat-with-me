@@ -567,6 +567,7 @@
         let username = '';
         let availableRooms = {};
         let sessionId = '';
+        let currentRoomId = '';  // Track current room
         
         // Generate or retrieve session ID
         function getSessionId() {
@@ -584,6 +585,7 @@
             localStorage.setItem('chatMessages_' + sessionId, messagesDiv.innerHTML);
             localStorage.setItem('chatUsername', username);
             localStorage.setItem('chatIsAdmin', isAdmin);
+            localStorage.setItem('chatRoomId', currentRoomId);  // Save room ID
         }
         
         // Load messages from localStorage
@@ -601,6 +603,7 @@
             localStorage.removeItem('chatMessages_' + sessionId);
             localStorage.removeItem('chatUsername');
             localStorage.removeItem('chatIsAdmin');
+            localStorage.removeItem('chatRoomId');
             sessionStorage.removeItem('chatSessionId');
         }
         
@@ -609,10 +612,12 @@
             sessionId = getSessionId();
             const savedUsername = localStorage.getItem('chatUsername');
             const savedIsAdmin = localStorage.getItem('chatIsAdmin');
+            const savedRoomId = localStorage.getItem('chatRoomId');
             
             if (savedUsername) {
                 username = savedUsername;
                 isAdmin = (savedIsAdmin === 'true');
+                currentRoomId = savedRoomId || '';
                 
                 // Auto-reconnect
                 document.getElementById('loginBox').classList.add('hidden');
@@ -624,7 +629,16 @@
                 // Reconnect socket
                 socket = io();
                 setupSocketListeners();
-                socket.emit('join_chat', { username, password: '' });
+                
+                // Rejoin with existing room ID for non-admin users
+                if (!isAdmin && currentRoomId) {
+                    socket.emit('rejoin_chat', { 
+                        username, 
+                        room_id: currentRoomId 
+                    });
+                } else {
+                    socket.emit('join_chat', { username, password: '' });
+                }
                 
                 return true;
             }
@@ -687,9 +701,17 @@
             });
             
             socket.on('waiting_for_admin', (data) => {
+                currentRoomId = data.room_id;  // Store room ID
                 showStatus(data.message, 'waiting');
                 document.getElementById('welcomeMessage').classList.remove('hidden');
                 addMessage(data.message, 'system');
+                saveMessages();  // Save room ID
+            });
+            
+            socket.on('rejoined_room', (data) => {
+                currentRoomId = data.room_id;
+                showStatus(data.message, 'waiting');
+                addMessage('✅ Reconnected to your chat room', 'system');
             });
             
             socket.on('admin_joined', (data) => {
@@ -699,6 +721,7 @@
             });
             
             socket.on('joined_room', (data) => {
+                currentRoomId = data.room_id;
                 showStatus(`💬 Chatting with: ${data.username}`, 'connected');
                 document.getElementById('roomSelector').classList.add('hidden');
                 addMessage(`✅ Connected to ${data.username}'s room`, 'system');
