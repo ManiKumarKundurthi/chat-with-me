@@ -1,6 +1,10 @@
 """
 WebSocket Chat Server - Room Queue System for Admin with Authentication
 """
+# MUST be first - before any other imports
+import eventlet
+eventlet.monkey_patch()
+
 from flask import Flask, request, render_template
 from flask_socketio import SocketIO, emit, join_room, leave_room
 from datetime import datetime
@@ -37,9 +41,10 @@ def handle_connect():
 
 @socketio.on('join_chat')
 def handle_join(data):
-    """Handle user joining - creates room and waits for admin"""
+    """Handle user joining - creates or rejoins room"""
     username = data.get('username', 'Anonymous')
     password = data.get('password', '')
+    requested_room_id = data.get('room_id', None)  # Client sends preferred room ID
     session_id = request.sid
 
     # Admin authentication
@@ -55,100 +60,77 @@ def handle_join(data):
             'message': 'Connected as Admin. Use /list to see waiting rooms, /join <room_id> to enter a room.'
         })
     else:
-        # Regular user creates a new waiting room
+        # Regular user - use their persistent room ID or create one
         active_users[session_id] = username
-        room_id = str(uuid.uuid4())[:8]
-
-        waiting_rooms[room_id] = {
-            'username': username,
-            'session_id': session_id,
-            'created_at': datetime.now().isoformat(),
-            'room_id': room_id
-        }
-
-        session_rooms[session_id] = room_id
-        join_room(room_id)
-
-        print(f"[SERVER] {username} created room: {room_id} (Session: {session_id})")
-
-        emit('waiting_for_admin', {
-            'room_id': room_id,
-            'message': f'Room created! Room ID: {room_id}. Waiting for Admin to join...'
-        })
-
-        # Notify all connected admins about new room
-        for sid, uname in active_users.items():
-            if uname == ADMIN_USERNAME:
-                emit('new_room_available', {
-                    'room_id': room_id,
-                    'username': username,
-                    'created_at': waiting_rooms[room_id]['created_at']
-                }, room=sid)
-
-@socketio.on('rejoin_chat')
-def handle_rejoin(data):
-    """Handle user rejoining existing room after refresh"""
-    username = data.get('username', 'Anonymous')
-    room_id = data.get('room_id', '')
-    session_id = request.sid
-    
-    print(f"[SERVER] {username} attempting to rejoin room: {room_id}")
-    
-    # Check if room exists in waiting rooms
-    if room_id in waiting_rooms:
-        # Update session ID for the existing room
-        waiting_rooms[room_id]['session_id'] = session_id
-        active_users[session_id] = username
-        session_rooms[session_id] = room_id
         
-        # Rejoin the room
-        join_room(room_id)
+        # Use client-provided room_id if available, otherwise generate one
+        if requested_room_id:
+            room_id = requested_room_id
+            print(f"[SERVER] User {username} requesting specific room: {room_id}")
+        else:
+            # Fallback: generate room ID server-side (shouldn't happen with updated client)
+            room_id = str(uuid.uuid4())[:8]
+            print(f"[SERVER] Generated new room ID for {username}: {room_id}")
         
-        print(f"[SERVER] {username} rejoined waiting room: {room_id}")
-        emit('rejoined_room', {
-            'room_id': room_id,
-            'message': f'Reconnected to room {room_id}. Still waiting for Admin...'
-        })
-        
-        # Notify admins again (in case they missed it)
-        for sid, uname in active_users.items():
-            if uname == ADMIN_USERNAME:
-                emit('new_room_available', {
-                    'room_id': room_id,
-                    'username': username,
-                    'created_at': waiting_rooms[room_id]['created_at']
-                }, room=sid)
-    
-    # Check if room exists in active rooms
-    elif room_id in active_rooms:
-        # Update user session ID in active room
-        active_rooms[room_id]['user_sid'] = session_id
-        active_users[session_id] = username
-        session_rooms[session_id] = room_id
-        
-        # Rejoin the room
-        join_room(room_id)
-        
-        print(f"[SERVER] {username} rejoined active room: {room_id}")
-        emit('rejoined_room', {
-            'room_id': room_id,
-            'message': f'Reconnected to chat with Admin'
-        })
-        
-        # Notify admin about reconnection
-        admin_sid = active_rooms[room_id]['admin_sid']
-        emit('system_message', {
-            'message': f'{username} reconnected to the chat'
-        }, room=admin_sid)
-    
-    else:
-        # Room doesn't exist anymore, create new one
-        print(f"[SERVER] Room {room_id} not found, creating new room for {username}")
-        emit('system_message', {
-            'message': 'Previous room expired. Creating new room...'
-        })
-        # Fall back to normal join
-        handle_join({'username': username, 'password': ''})
+        # Check if this room already exists
+        if room_id in waiting_rooms:
+            # User is rejoining their existing waiting room
+            print(f"[SERVER] {username} rejoining existing waiting room: {room_id}")
+            waiting_rooms[room_id]['session_id'] = session_id
+            session_rooms[session_id] = room_id
+            join_room(room_id)
+            
+            emit('waiting_for_admin', {
+                'room_id': room_id,
+                'message': f'Reconnected to room {room_id}. Waiting for Admin to join...'
+            })
+            
+        elif room_id in active_rooms:
+            # User is rejoining their active chat room
+            print(f"[SERVER] {username} rejoining active room: {room_id}")
+            active_rooms[room_id]['user_sid'] = session_id
+            session_rooms[session_id] = room_id
+            join_room(room_id)
+            
+            emit('waiting_for_admin', {
+                'room_id': room_id,
+                'message': f'Reconnected to your chat with Admin'
+            })
+            
+            # Notify admin about reconnection
+            admin_sid = active_rooms[room_id].get('admin_sid')
+            if admin_sid:
+                emit('system_message', {
+                    'message': f'{username} has reconnected'
+                }, room=admin_sid)
+                
+        else:
+            # Create new waiting room
+            waiting_rooms[room_id] = {
+                'username': username,
+                'session_id': session_id,
+                'created_at': datetime.now().isoformat(),
+                'room_id': room_id
+            }
+
+            session_rooms[session_id] = room_id
+            join_room(room_id)
+
+            print(f"[SERVER] {username} created room: {room_id} (Session: {session_id})")
+
+            emit('waiting_for_admin', {
+                'room_id': room_id,
+                'message': f'Room created! Room ID: {room_id}. Waiting for Admin to join...'
+            })
+
+            # Notify all connected admins about new room
+            for sid, uname in active_users.items():
+                if uname == ADMIN_USERNAME:
+                    emit('new_room_available', {
+                        'room_id': room_id,
+                        'username': username,
+                        'created_at': waiting_rooms[room_id]['created_at']
+                    }, room=sid)
 
 @socketio.on('list_rooms')
 def handle_list_rooms():
