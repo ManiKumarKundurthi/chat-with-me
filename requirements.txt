@@ -1,0 +1,9 @@
+flask
+flask-socketio
+flask-bcrypt
+python-socketio[client]
+python-engineio
+eventlet
+gunicorn
+python-dotenv
+requests
