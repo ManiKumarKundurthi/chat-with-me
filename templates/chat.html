@@ -567,7 +567,19 @@
         let username = '';
         let availableRooms = {};
         let sessionId = '';
-        let currentRoomId = '';  // Track current room
+        let currentRoomId = '';
+        
+        // Generate persistent room ID based on username
+        function generateUserRoomId(username) {
+            // Create a consistent room ID for this user
+            // Hash the username to create a unique, reproducible ID
+            let hash = 0;
+            for (let i = 0; i < username.length; i++) {
+                hash = ((hash << 5) - hash) + username.charCodeAt(i);
+                hash = hash & hash;
+            }
+            return 'room_' + Math.abs(hash).toString(36) + '_' + username.toLowerCase().replace(/[^a-z0-9]/g, '').substring(0, 5);
+        }
         
         // Generate or retrieve session ID
         function getSessionId() {
@@ -585,7 +597,7 @@
             localStorage.setItem('chatMessages_' + sessionId, messagesDiv.innerHTML);
             localStorage.setItem('chatUsername', username);
             localStorage.setItem('chatIsAdmin', isAdmin);
-            localStorage.setItem('chatRoomId', currentRoomId);  // Save room ID
+            localStorage.setItem('chatRoomId', currentRoomId);
         }
         
         // Load messages from localStorage
@@ -612,12 +624,15 @@
             sessionId = getSessionId();
             const savedUsername = localStorage.getItem('chatUsername');
             const savedIsAdmin = localStorage.getItem('chatIsAdmin');
-            const savedRoomId = localStorage.getItem('chatRoomId');
             
             if (savedUsername) {
                 username = savedUsername;
                 isAdmin = (savedIsAdmin === 'true');
-                currentRoomId = savedRoomId || '';
+                
+                // Generate consistent room ID for this user
+                if (!isAdmin) {
+                    currentRoomId = generateUserRoomId(username);
+                }
                 
                 // Auto-reconnect
                 document.getElementById('loginBox').classList.add('hidden');
@@ -630,11 +645,12 @@
                 socket = io();
                 setupSocketListeners();
                 
-                // Rejoin with existing room ID for non-admin users
+                // Rejoin with persistent room ID
                 if (!isAdmin && currentRoomId) {
-                    socket.emit('rejoin_chat', { 
+                    socket.emit('join_chat', { 
                         username, 
-                        room_id: currentRoomId 
+                        password: '',
+                        room_id: currentRoomId
                     });
                 } else {
                     socket.emit('join_chat', { username, password: '' });
@@ -669,10 +685,21 @@
             }
             
             sessionId = getSessionId();
+            
+            // Generate persistent room ID for non-admin users
+            if (!isAdmin) {
+                currentRoomId = generateUserRoomId(username);
+            }
+            
             socket = io();
             setupSocketListeners();
             
-            socket.emit('join_chat', { username, password });
+            // Send room_id with join request for non-admin users
+            socket.emit('join_chat', { 
+                username, 
+                password,
+                room_id: isAdmin ? null : currentRoomId
+            });
             
             document.getElementById('loginBox').classList.add('hidden');
             document.getElementById('chatBox').classList.remove('hidden');
@@ -701,17 +728,11 @@
             });
             
             socket.on('waiting_for_admin', (data) => {
-                currentRoomId = data.room_id;  // Store room ID
+                currentRoomId = data.room_id;
                 showStatus(data.message, 'waiting');
                 document.getElementById('welcomeMessage').classList.remove('hidden');
                 addMessage(data.message, 'system');
-                saveMessages();  // Save room ID
-            });
-            
-            socket.on('rejoined_room', (data) => {
-                currentRoomId = data.room_id;
-                showStatus(data.message, 'waiting');
-                addMessage('✅ Reconnected to your chat room', 'system');
+                saveMessages();
             });
             
             socket.on('admin_joined', (data) => {
@@ -787,7 +808,7 @@
                     const option = document.createElement('option');
                     option.value = roomId;
                     const time = new Date(info.created_at).toLocaleTimeString();
-                    option.textContent = `${info.username} (Room: ${roomId.substring(0, 6)}... at ${time})`;
+                    option.textContent = `${info.username} (${roomId.substring(0, 15)}... at ${time})`;
                     dropdown.appendChild(option);
                 });
             }
@@ -830,7 +851,6 @@
             messagesDiv.appendChild(messageDiv);
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
             
-            // Save messages after each new message
             saveMessages();
         }
         
@@ -845,14 +865,9 @@
                 socket.disconnect();
             }
             
-            // Clear all stored data
             clearMessages();
-            
-            // Hide chat box
             document.getElementById('chatBox').classList.add('hidden');
             document.getElementById('loginBox').classList.add('hidden');
-            
-            // Show thank you screen
             showThankYouScreen();
         }
         
@@ -899,12 +914,10 @@
             container.innerHTML = thankYouHTML;
         }
         
-        // Check for existing session on page load
         window.addEventListener('DOMContentLoaded', () => {
             checkExistingSession();
         });
         
-        // Save messages before page unload (refresh)
         window.addEventListener('beforeunload', () => {
             if (socket && socket.connected) {
                 saveMessages();
