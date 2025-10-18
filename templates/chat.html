@@ -5,45 +5,77 @@
     <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: Arial, sans-serif; background: #f0f2f5; }
-
+        body { font-family: Arial, sans-serif; background: #0a0a0a; color: #e4e6eb; }
+        
         .container { max-width: 800px; margin: 0 auto; padding: 20px; }
-        .login-box, .chat-box { background: white; border-radius: 10px; padding: 30px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-
-        h1 { color: #1c1e21; margin-bottom: 20px; text-align: center; }
-
+        .login-box, .chat-box { background: #242526; border-radius: 10px; padding: 30px; box-shadow: 0 2px 10px rgba(0,0,0,0.5); }
+        
+        h1 { color: #e4e6eb; margin-bottom: 20px; text-align: center; }
+        
         .role-selection { display: flex; gap: 15px; justify-content: center; margin-bottom: 20px; }
-        .role-btn { padding: 15px 30px; border: 2px solid #0084ff; background: white; color: #0084ff;
+        .role-btn { padding: 15px 30px; border: 2px solid #0084ff; background: #242526; color: #0084ff; 
                     border-radius: 8px; cursor: pointer; font-size: 16px; transition: all 0.3s; }
         .role-btn:hover { background: #0084ff; color: white; }
         .role-btn.active { background: #0084ff; color: white; }
-
-        input[type="text"], input[type="password"] { width: 100%; padding: 12px; margin: 10px 0;
-                                                      border: 1px solid #ddd; border-radius: 8px; font-size: 14px; }
-
-        button { width: 100%; padding: 12px; background: #0084ff; color: white; border: none;
+        
+        input[type="text"], input[type="password"] { 
+            width: 100%; padding: 12px; margin: 10px 0; 
+            border: 1px solid #3a3b3c; border-radius: 8px; font-size: 14px;
+            background: #3a3b3c; color: #e4e6eb;
+        }
+        input::placeholder { color: #b0b3b8; }
+        
+        select {
+            width: 100%; padding: 12px; margin: 10px 0;
+            border: 1px solid #3a3b3c; border-radius: 8px; font-size: 14px;
+            background: #3a3b3c; color: #e4e6eb; cursor: pointer;
+        }
+        select option { background: #242526; color: #e4e6eb; }
+        
+        button { width: 100%; padding: 12px; background: #0084ff; color: white; border: none; 
                  border-radius: 8px; font-size: 16px; cursor: pointer; margin-top: 10px; }
         button:hover { background: #006ee5; }
-
+        button:disabled { background: #3a3b3c; cursor: not-allowed; }
+        
         .status { padding: 10px; margin-bottom: 15px; border-radius: 8px; text-align: center; }
-        .status.connected { background: #d4edda; color: #155724; }
-        .status.waiting { background: #fff3cd; color: #856404; }
-
-        .messages { height: 400px; overflow-y: auto; padding: 15px; background: #f8f9fa;
-                   border-radius: 8px; margin-bottom: 15px; }
+        .status.connected { background: #1f4a29; color: #4ade80; border: 1px solid #4ade80; }
+        .status.waiting { background: #4a3c1f; color: #fbbf24; border: 1px solid #fbbf24; }
+        
+        .messages { height: 400px; overflow-y: auto; padding: 15px; background: #18191a; 
+                   border-radius: 8px; margin-bottom: 15px; border: 1px solid #3a3b3c; }
         .message { padding: 10px; margin: 8px 0; border-radius: 8px; max-width: 70%; word-wrap: break-word; }
         .message.own { background: #0084ff; color: white; margin-left: auto; }
-        .message.other { background: white; color: #000; }
-        .message.system { background: #fff3cd; color: #856404; margin: 10px auto; text-align: center; max-width: 100%; }
-
+        .message.other { background: #3a3b3c; color: #e4e6eb; }
+        .message.system { background: #4a3c1f; color: #fbbf24; margin: 10px auto; text-align: center; max-width: 90%; border: 1px solid #fbbf24; }
+        
         .input-area { display: flex; gap: 10px; }
         .input-area input { flex: 1; margin: 0; }
         .input-area button { width: auto; padding: 12px 24px; margin: 0; }
-
+        
         .hidden { display: none; }
-
-        .commands { background: #e7f3ff; padding: 10px; border-radius: 8px; margin-bottom: 15px; font-size: 13px; }
-        .commands strong { display: block; margin-bottom: 5px; }
+        
+        .room-selector { 
+            background: #1f4a29; padding: 15px; border-radius: 8px; margin-bottom: 15px; 
+            border: 1px solid #4ade80;
+        }
+        .room-selector label { 
+            display: block; margin-bottom: 8px; font-weight: bold; color: #4ade80; 
+        }
+        .room-selector select { 
+            margin: 0; background: #242526; border: 1px solid #4ade80; color: #4ade80;
+        }
+        .room-info { 
+            font-size: 12px; color: #b0b3b8; margin-top: 5px; 
+        }
+        
+        .commands { background: #1e3a5f; padding: 10px; border-radius: 8px; margin-bottom: 15px; font-size: 13px; border: 1px solid #0084ff; }
+        .commands strong { display: block; margin-bottom: 5px; color: #0084ff; }
+        
+        /* Custom scrollbar */
+        .messages::-webkit-scrollbar { width: 8px; }
+        .messages::-webkit-scrollbar-track { background: #242526; }
+        .messages::-webkit-scrollbar-thumb { background: #3a3b3c; border-radius: 4px; }
+        .messages::-webkit-scrollbar-thumb:hover { background: #4a4b4c; }
     </style>
 </head>
 <body>
@@ -51,36 +83,45 @@
         <!-- Login Screen -->
         <div id="loginBox" class="login-box">
             <h1>💬 Chat with Me</h1>
-
+            
             <div class="role-selection">
                 <button class="role-btn active" onclick="selectRole('user')">👤 User</button>
                 <button class="role-btn" onclick="selectRole('admin')">🔐 Admin</button>
             </div>
-
+            
             <div id="userFields">
                 <input type="text" id="username" placeholder="Enter your name" />
             </div>
-
+            
             <div id="adminFields" class="hidden">
                 <input type="password" id="password" placeholder="Enter admin password" />
             </div>
-
+            
             <button onclick="connect()">Start Chat</button>
         </div>
-
+        
         <!-- Chat Screen -->
         <div id="chatBox" class="chat-box hidden">
             <h1>💬 Chat</h1>
-
+            
             <div id="status" class="status">Connecting...</div>
-
-            <div id="commands" class="commands hidden">
-                <strong>Admin Commands:</strong>
-                /list - Show waiting rooms | /join &lt;room_id&gt; - Join a room
+            
+            <!-- Room Selector for Admin -->
+            <div id="roomSelector" class="room-selector hidden">
+                <label>📋 Available Rooms:</label>
+                <select id="roomDropdown" onchange="joinSelectedRoom()">
+                    <option value="">-- Select a room to join --</option>
+                </select>
+                <div class="room-info" id="roomInfo">Waiting for users to connect...</div>
             </div>
-
+            
+            <div id="commands" class="commands hidden">
+                <strong>💡 Admin Tips:</strong>
+                Select rooms from dropdown above | Type messages normally to chat
+            </div>
+            
             <div id="messages" class="messages"></div>
-
+            
             <div class="input-area">
                 <input type="text" id="messageInput" placeholder="Type your message..." onkeypress="handleKeyPress(event)" />
                 <button onclick="sendMessage()">Send</button>
@@ -92,119 +133,165 @@
         let socket;
         let isAdmin = false;
         let username = '';
-
+        let availableRooms = {};
+        
         function selectRole(role) {
             document.querySelectorAll('.role-btn').forEach(btn => btn.classList.remove('active'));
             event.target.classList.add('active');
-
+            
             isAdmin = (role === 'admin');
             document.getElementById('userFields').classList.toggle('hidden', isAdmin);
             document.getElementById('adminFields').classList.toggle('hidden', !isAdmin);
         }
-
+        
         function connect() {
             username = isAdmin ? 'DARK' : document.getElementById('username').value.trim();
             const password = isAdmin ? document.getElementById('password').value : '';
-
+            
             if (!username) {
                 alert('Please enter your name');
                 return;
             }
-
+            
             if (isAdmin && !password) {
                 alert('Please enter admin password');
                 return;
             }
-
+            
             socket = io();
-
+            
             socket.on('connect', () => {
                 socket.emit('join_chat', { username, password });
                 document.getElementById('loginBox').classList.add('hidden');
                 document.getElementById('chatBox').classList.remove('hidden');
             });
-
+            
             socket.on('auth_failed', (data) => {
                 alert(data.message);
                 location.reload();
             });
-
+            
             socket.on('admin_connected', (data) => {
-                showStatus(data.message, 'connected');
+                showStatus('Connected as Admin - Waiting for users...', 'connected');
                 document.getElementById('commands').classList.remove('hidden');
+                document.getElementById('roomSelector').classList.remove('hidden');
+                // Auto-request room list
+                socket.emit('list_rooms');
             });
-
+            
             socket.on('waiting_for_admin', (data) => {
                 showStatus(data.message, 'waiting');
             });
-
+            
             socket.on('admin_joined', (data) => {
                 showStatus('Admin has joined! You can start chatting.', 'connected');
             });
-
+            
             socket.on('joined_room', (data) => {
-                showStatus(`Chatting with: ${data.username}`, 'connected');
+                showStatus(`💬 Chatting with: ${data.username}`, 'connected');
+                document.getElementById('roomSelector').classList.add('hidden');
+                addMessage(`✅ Connected to ${data.username}'s room`, 'system');
             });
-
+            
             socket.on('new_room_available', (data) => {
-                addMessage(`🔔 New room: ${data.room_id} from ${data.username}`, 'system');
+                addMessage(`🔔 New user waiting: ${data.username}`, 'system');
+                availableRooms[data.room_id] = {
+                    username: data.username,
+                    created_at: data.created_at
+                };
+                updateRoomDropdown();
             });
-
+            
             socket.on('rooms_list', (data) => {
-                if (data.rooms.length === 0) {
-                    addMessage('No rooms waiting', 'system');
-                } else {
-                    addMessage('=== WAITING ROOMS ===', 'system');
-                    data.rooms.forEach(room => {
-                        addMessage(`Room: ${room.room_id} | User: ${room.username}`, 'system');
-                    });
-                }
+                availableRooms = {};
+                data.rooms.forEach(room => {
+                    availableRooms[room.room_id] = {
+                        username: room.username,
+                        created_at: room.created_at
+                    };
+                });
+                updateRoomDropdown();
             });
-
+            
             socket.on('receive_message', (data) => {
                 addMessage(`${data.username}: ${data.message}`, 'other');
             });
-
+            
             socket.on('system_message', (data) => {
                 addMessage(data.message, 'system');
             });
-
+            
             socket.on('user_left', (data) => {
                 addMessage(data.message, 'system');
+                if (isAdmin) {
+                    document.getElementById('roomSelector').classList.remove('hidden');
+                    socket.emit('list_rooms');
+                }
             });
-
+            
             socket.on('disconnect', () => {
-                showStatus('Disconnected', 'waiting');
+                showStatus('Disconnected from server', 'waiting');
             });
         }
-
+        
+        function updateRoomDropdown() {
+            const dropdown = document.getElementById('roomDropdown');
+            const roomInfo = document.getElementById('roomInfo');
+            
+            // Clear existing options except first
+            dropdown.innerHTML = '<option value="">-- Select a room to join --</option>';
+            
+            const roomCount = Object.keys(availableRooms).length;
+            
+            if (roomCount === 0) {
+                roomInfo.textContent = 'No users waiting. Rooms will appear here when users connect.';
+                dropdown.disabled = true;
+            } else {
+                roomInfo.textContent = `${roomCount} user(s) waiting to chat with you`;
+                dropdown.disabled = false;
+                
+                // Add rooms to dropdown
+                Object.entries(availableRooms).forEach(([roomId, info]) => {
+                    const option = document.createElement('option');
+                    option.value = roomId;
+                    const time = new Date(info.created_at).toLocaleTimeString();
+                    option.textContent = `${info.username} (Room: ${roomId.substring(0, 6)}... at ${time})`;
+                    dropdown.appendChild(option);
+                });
+            }
+        }
+        
+        function joinSelectedRoom() {
+            const dropdown = document.getElementById('roomDropdown');
+            const roomId = dropdown.value;
+            
+            if (!roomId) return;
+            
+            socket.emit('join_room_by_id', { room_id: roomId });
+            
+            // Remove from available rooms
+            delete availableRooms[roomId];
+            updateRoomDropdown();
+        }
+        
         function sendMessage() {
             const input = document.getElementById('messageInput');
             const message = input.value.trim();
-
+            
             if (!message) return;
-
-            if (isAdmin && message.startsWith('/')) {
-                if (message === '/list') {
-                    socket.emit('list_rooms');
-                } else if (message.startsWith('/join ')) {
-                    const roomId = message.substring(6).trim();
-                    socket.emit('join_room_by_id', { room_id: roomId });
-                }
-            } else {
-                socket.emit('send_message', { message });
-                addMessage(`You: ${message}`, 'own');
-            }
-
+            
+            socket.emit('send_message', { message });
+            addMessage(`You: ${message}`, 'own');
+            
             input.value = '';
         }
-
+        
         function handleKeyPress(event) {
             if (event.key === 'Enter') {
                 sendMessage();
             }
         }
-
+        
         function addMessage(text, type) {
             const messagesDiv = document.getElementById('messages');
             const messageDiv = document.createElement('div');
@@ -213,7 +300,7 @@
             messagesDiv.appendChild(messageDiv);
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
         }
-
+        
         function showStatus(message, type) {
             const statusDiv = document.getElementById('status');
             statusDiv.textContent = message;
