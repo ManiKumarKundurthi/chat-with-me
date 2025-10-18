@@ -416,15 +416,59 @@
             // Clear all stored data
             clearMessages();
             
-            // Show goodbye message
-            if (isAdmin) {
-                alert('You have disconnected from the chat. All chat history has been cleared.');
-            } else {
-                alert('Thank you for chatting! Your session has ended and chat history has been cleared.');
-            }
+            // Hide chat box
+            document.getElementById('chatBox').classList.add('hidden');
+            document.getElementById('loginBox').classList.add('hidden');
             
-            // Reload page to login screen
-            location.reload();
+            // Show thank you screen
+            showThankYouScreen();
+        }
+        
+        function showThankYouScreen() {
+            const container = document.querySelector('.container');
+            
+            const thankYouHTML = `
+                <div class="login-box" style="text-align: center; animation: fadeIn 0.5s;">
+                    <div style="font-size: 60px; margin-bottom: 20px;">🎉</div>
+                    <h1 style="color: #4ade80; margin-bottom: 15px;">Thank You for Chatting!</h1>
+                    <p style="color: #b0b3b8; font-size: 16px; line-height: 1.8; margin-bottom: 25px;">
+                        ${isAdmin ? 
+                            'Your session has ended. All chat history has been cleared.' : 
+                            'We appreciate you taking the time to connect with us. Your chat session has ended and all history has been cleared for your privacy.'}
+                    </p>
+                    
+                    <div style="background: #1e3a5f; padding: 20px; border-radius: 8px; margin-bottom: 25px; border: 1px solid #0084ff;">
+                        <p style="color: #0084ff; font-size: 14px; margin-bottom: 10px;">
+                            ⭐ Like this project? Check out the source code!
+                        </p>
+                        <a href="https://github.com/ManiKumarKundurthi/chat-with-me/tree/main" 
+                           target="_blank"
+                           style="display: inline-block; background: #0084ff; color: white; padding: 12px 30px; 
+                                  border-radius: 8px; text-decoration: none; font-weight: bold; margin-top: 10px;
+                                  transition: all 0.3s;">
+                            🔗 View on GitHub
+                        </a>
+                    </div>
+                    
+                    <button onclick="location.reload()" 
+                            style="background: #4ade80; color: #0a0a0a; font-weight: bold;">
+                        Start New Chat
+                    </button>
+                </div>
+                
+                <style>
+                    @keyframes fadeIn {
+                        from { opacity: 0; transform: translateY(20px); }
+                        to { opacity: 1; transform: translateY(0); }
+                    }
+                    a:hover {
+                        background: #006ee5 !important;
+                        transform: scale(1.05);
+                    }
+                </style>
+            `;
+            
+            container.innerHTML = thankYouHTML;
         }
         
         // Check for existing session on page load
