@@ -1,7 +1,7 @@
 """
 WebSocket Chat Server - Room Queue System for Admin with Authentication
 """
-from flask import Flask, request
+from flask import Flask, request, render_template
 from flask_socketio import SocketIO, emit, join_room, leave_room
 from datetime import datetime
 import uuid
