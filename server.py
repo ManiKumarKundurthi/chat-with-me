@@ -24,6 +24,11 @@ session_rooms = {}
 ADMIN_USERNAME = Config.ADMIN_USERNAME
 ADMIN_PASSWORD_HASH = Config.ADMIN_PASSWORD_HASH
 
+@app.route('/')
+def index():
+    """Serve the web chat client"""
+    return render_template('chat.html')
+
 @socketio.on('connect')
 def handle_connect():
     """Handle new client connections"""
