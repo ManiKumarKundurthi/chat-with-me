@@ -37,9 +37,16 @@
         button:hover { background: #006ee5; }
         button:disabled { background: #3a3b3c; cursor: not-allowed; }
         
+        .disconnect-btn { background: #dc2626; margin-top: 0; }
+        .disconnect-btn:hover { background: #b91c1c; }
+        
         .status { padding: 10px; margin-bottom: 15px; border-radius: 8px; text-align: center; }
         .status.connected { background: #1f4a29; color: #4ade80; border: 1px solid #4ade80; }
         .status.waiting { background: #4a3c1f; color: #fbbf24; border: 1px solid #fbbf24; }
+        
+        .header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+        .header-row h1 { margin: 0; }
+        .header-row button { width: auto; padding: 10px 20px; margin: 0; font-size: 14px; }
         
         .messages { height: 400px; overflow-y: auto; padding: 15px; background: #18191a; 
                    border-radius: 8px; margin-bottom: 15px; border: 1px solid #3a3b3c; }
@@ -70,6 +77,13 @@
         
         .commands { background: #1e3a5f; padding: 10px; border-radius: 8px; margin-bottom: 15px; font-size: 13px; border: 1px solid #0084ff; }
         .commands strong { display: block; margin-bottom: 5px; color: #0084ff; }
+        
+        .welcome-message {
+            background: #1e3a5f; padding: 20px; border-radius: 8px; margin-bottom: 15px; 
+            border: 1px solid #0084ff; text-align: center;
+        }
+        .welcome-message h2 { color: #0084ff; margin-bottom: 10px; font-size: 18px; }
+        .welcome-message p { color: #b0b3b8; line-height: 1.6; }
         
         /* Custom scrollbar */
         .messages::-webkit-scrollbar { width: 8px; }
@@ -102,9 +116,18 @@
         
         <!-- Chat Screen -->
         <div id="chatBox" class="chat-box hidden">
-            <h1>💬 Chat</h1>
+            <div class="header-row">
+                <h1>💬 Chat</h1>
+                <button class="disconnect-btn" onclick="disconnectChat()">Disconnect</button>
+            </div>
             
             <div id="status" class="status">Connecting...</div>
+            
+            <!-- Welcome message for users -->
+            <div id="welcomeMessage" class="welcome-message hidden">
+                <h2>👋 Welcome!</h2>
+                <p>Thank you for connecting! Your chat room has been created. Please wait while the admin joins your room. You'll be notified when they're ready to chat with you.</p>
+            </div>
             
             <!-- Room Selector for Admin -->
             <div id="roomSelector" class="room-selector hidden">
@@ -134,6 +157,70 @@
         let isAdmin = false;
         let username = '';
         let availableRooms = {};
+        let sessionId = '';
+        
+        // Generate or retrieve session ID
+        function getSessionId() {
+            let sid = sessionStorage.getItem('chatSessionId');
+            if (!sid) {
+                sid = 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+                sessionStorage.setItem('chatSessionId', sid);
+            }
+            return sid;
+        }
+        
+        // Save messages to localStorage
+        function saveMessages() {
+            const messagesDiv = document.getElementById('messages');
+            localStorage.setItem('chatMessages_' + sessionId, messagesDiv.innerHTML);
+            localStorage.setItem('chatUsername', username);
+            localStorage.setItem('chatIsAdmin', isAdmin);
+        }
+        
+        // Load messages from localStorage
+        function loadMessages() {
+            const savedMessages = localStorage.getItem('chatMessages_' + sessionId);
+            if (savedMessages) {
+                document.getElementById('messages').innerHTML = savedMessages;
+                const messagesDiv = document.getElementById('messages');
+                messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            }
+        }
+        
+        // Clear messages from storage
+        function clearMessages() {
+            localStorage.removeItem('chatMessages_' + sessionId);
+            localStorage.removeItem('chatUsername');
+            localStorage.removeItem('chatIsAdmin');
+            sessionStorage.removeItem('chatSessionId');
+        }
+        
+        // Check if user was already connected
+        function checkExistingSession() {
+            sessionId = getSessionId();
+            const savedUsername = localStorage.getItem('chatUsername');
+            const savedIsAdmin = localStorage.getItem('chatIsAdmin');
+            
+            if (savedUsername) {
+                username = savedUsername;
+                isAdmin = (savedIsAdmin === 'true');
+                
+                // Auto-reconnect
+                document.getElementById('loginBox').classList.add('hidden');
+                document.getElementById('chatBox').classList.remove('hidden');
+                
+                // Load previous messages
+                loadMessages();
+                
+                // Reconnect socket
+                socket = io();
+                setupSocketListeners();
+                socket.emit('join_chat', { username, password: '' });
+                
+                return true;
+            }
+            return false;
+        }
         
         function selectRole(role) {
             document.querySelectorAll('.role-btn').forEach(btn => btn.classList.remove('active'));
@@ -158,33 +245,48 @@
                 return;
             }
             
+            sessionId = getSessionId();
             socket = io();
+            setupSocketListeners();
             
+            socket.emit('join_chat', { username, password });
+            
+            document.getElementById('loginBox').classList.add('hidden');
+            document.getElementById('chatBox').classList.remove('hidden');
+            
+            // Save user info
+            localStorage.setItem('chatUsername', username);
+            localStorage.setItem('chatIsAdmin', isAdmin);
+        }
+        
+        function setupSocketListeners() {
             socket.on('connect', () => {
-                socket.emit('join_chat', { username, password });
-                document.getElementById('loginBox').classList.add('hidden');
-                document.getElementById('chatBox').classList.remove('hidden');
+                console.log('Connected to server');
             });
             
             socket.on('auth_failed', (data) => {
                 alert(data.message);
-                location.reload();
+                disconnectChat();
             });
             
             socket.on('admin_connected', (data) => {
                 showStatus('Connected as Admin - Waiting for users...', 'connected');
                 document.getElementById('commands').classList.remove('hidden');
                 document.getElementById('roomSelector').classList.remove('hidden');
-                // Auto-request room list
+                document.getElementById('welcomeMessage').classList.add('hidden');
                 socket.emit('list_rooms');
             });
             
             socket.on('waiting_for_admin', (data) => {
                 showStatus(data.message, 'waiting');
+                document.getElementById('welcomeMessage').classList.remove('hidden');
+                addMessage(data.message, 'system');
             });
             
             socket.on('admin_joined', (data) => {
                 showStatus('Admin has joined! You can start chatting.', 'connected');
+                document.getElementById('welcomeMessage').classList.add('hidden');
+                addMessage('✅ Admin has joined the chat!', 'system');
             });
             
             socket.on('joined_room', (data) => {
@@ -238,7 +340,6 @@
             const dropdown = document.getElementById('roomDropdown');
             const roomInfo = document.getElementById('roomInfo');
             
-            // Clear existing options except first
             dropdown.innerHTML = '<option value="">-- Select a room to join --</option>';
             
             const roomCount = Object.keys(availableRooms).length;
@@ -250,7 +351,6 @@
                 roomInfo.textContent = `${roomCount} user(s) waiting to chat with you`;
                 dropdown.disabled = false;
                 
-                // Add rooms to dropdown
                 Object.entries(availableRooms).forEach(([roomId, info]) => {
                     const option = document.createElement('option');
                     option.value = roomId;
@@ -268,8 +368,6 @@
             if (!roomId) return;
             
             socket.emit('join_room_by_id', { room_id: roomId });
-            
-            // Remove from available rooms
             delete availableRooms[roomId];
             updateRoomDropdown();
         }
@@ -299,6 +397,9 @@
             messageDiv.textContent = text;
             messagesDiv.appendChild(messageDiv);
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            
+            // Save messages after each new message
+            saveMessages();
         }
         
         function showStatus(message, type) {
@@ -306,6 +407,37 @@
             statusDiv.textContent = message;
             statusDiv.className = `status ${type}`;
         }
+        
+        function disconnectChat() {
+            if (socket) {
+                socket.disconnect();
+            }
+            
+            // Clear all stored data
+            clearMessages();
+            
+            // Show goodbye message
+            if (isAdmin) {
+                alert('You have disconnected from the chat. All chat history has been cleared.');
+            } else {
+                alert('Thank you for chatting! Your session has ended and chat history has been cleared.');
+            }
+            
+            // Reload page to login screen
+            location.reload();
+        }
+        
+        // Check for existing session on page load
+        window.addEventListener('DOMContentLoaded', () => {
+            checkExistingSession();
+        });
+        
+        // Save messages before page unload (refresh)
+        window.addEventListener('beforeunload', () => {
+            if (socket && socket.connected) {
+                saveMessages();
+            }
+        });
     </script>
 </body>
 </html>
