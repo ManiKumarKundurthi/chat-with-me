@@ -261,47 +261,110 @@ def handle_message(data):
 
     emit('receive_message', message_obj, room=room_id, include_self=False)
 
+@socketio.on('intentional_disconnect')
+def handle_intentional_disconnect(data):
+    """Handle explicit disconnect (user clicked disconnect button)"""
+    session_id = request.sid
+    username = data.get('username', 'Unknown')
+    room_id = data.get('room_id')
+    
+    print(f"[SERVER] {username} intentionally disconnected from room {room_id}")
+    
+    # Cancel any cleanup timers
+    if room_id and room_id in cleanup_timers:
+        cleanup_timers[room_id].cancel()
+        del cleanup_timers[room_id]
+    
+    # Immediately clean up the room
+    if room_id in waiting_rooms:
+        del waiting_rooms[room_id]
+        print(f"[SERVER] Removed waiting room: {room_id}")
+    
+    if room_id in active_rooms:
+        # Notify the other person
+        admin_sid = active_rooms[room_id].get('admin_sid')
+        user_sid = active_rooms[room_id].get('user_sid')
+        
+        if admin_sid == session_id:
+            # Admin left intentionally
+            if user_sid:
+                emit('user_left', {
+                    'username': 'Admin',
+                    'message': 'Admin has ended the chat session.'
+                }, room=user_sid)
+        else:
+            # User left intentionally
+            if admin_sid:
+                emit('user_left', {
+                    'username': username,
+                    'message': f'{username} has ended the chat session.'
+                }, room=admin_sid)
+        
+        del active_rooms[room_id]
+        print(f"[SERVER] Removed active room: {room_id}")
+
+@socketio.on('page_closed')
+def handle_page_closed(data):
+    """Handle page close (tab/browser closed, not refresh)"""
+    session_id = request.sid
+    username = data.get('username', 'Unknown')
+    room_id = data.get('room_id')
+    
+    print(f"[SERVER] {username} closed browser/tab - room {room_id}")
+    
+    # Cancel cleanup timer and remove immediately
+    if room_id and room_id in cleanup_timers:
+        cleanup_timers[room_id].cancel()
+        del cleanup_timers[room_id]
+    
+    # Clean up room immediately
+    if room_id in waiting_rooms:
+        del waiting_rooms[room_id]
+    
+    if room_id in active_rooms:
+        admin_sid = active_rooms[room_id].get('admin_sid')
+        if admin_sid and admin_sid != session_id:
+            emit('user_left', {
+                'username': username,
+                'message': f'{username} closed their browser/tab.'
+            }, room=admin_sid)
+        
+        del active_rooms[room_id]
+
 @socketio.on('disconnect')
 def handle_disconnect():
-    """Handle client disconnection with reconnection grace period"""
+    """Handle client disconnection - only preserve rooms for refresh reconnects"""
     session_id = request.sid
     username = active_users.get(session_id, 'Unknown')
     room_id = session_rooms.get(session_id)
 
-    print(f"[SERVER] {username} disconnected (Session: {session_id})")
+    print(f"[SERVER] {username} disconnected (Session: {session_id}) - assuming refresh")
 
-    # Give user 30 seconds to reconnect before cleaning up
+    # Only give grace period for potential refresh reconnects
     if room_id:
-        # Cancel any existing timer for this room
+        # Cancel any existing timer
         if room_id in cleanup_timers:
             cleanup_timers[room_id].cancel()
         
-        # Schedule cleanup after 30 seconds
-        timer = Timer(30.0, cleanup_abandoned_room, [room_id])
+        # Give 10 seconds for refresh (shorter since page close is handled separately)
+        timer = Timer(10.0, cleanup_abandoned_room, [room_id])
         timer.start()
         cleanup_timers[room_id] = timer
         
         if room_id in active_rooms:
-            # Check if this is the user or admin disconnecting
             if active_rooms[room_id].get('user_sid') == session_id:
-                # User disconnected from active room
-                print(f"[SERVER] User {username} disconnected from active room {room_id} - 30s grace period")
-                
-                # Notify admin but don't destroy room yet
+                print(f"[SERVER] User {username} disconnected (refresh expected) - 10s grace period")
                 admin_sid = active_rooms[room_id].get('admin_sid')
                 if admin_sid:
                     emit('system_message', {
-                        'message': f'⚠️ {username} disconnected (may reconnect...)'
+                        'message': f'⚠️ {username} disconnected (refreshing page...)'
                     }, room=admin_sid)
                     
             elif active_rooms[room_id].get('admin_sid') == session_id:
-                # Admin disconnected - move room back to waiting immediately
-                print(f"[SERVER] Admin disconnected from room {room_id} - moving back to waiting")
-                
+                print(f"[SERVER] Admin disconnected from room {room_id}")
                 user_sid = active_rooms[room_id].get('user_sid')
                 user_name = active_rooms[room_id].get('username')
                 
-                # Move room back to waiting rooms
                 waiting_rooms[room_id] = {
                     'username': user_name,
                     'session_id': user_sid,
@@ -309,26 +372,17 @@ def handle_disconnect():
                     'room_id': room_id
                 }
                 
-                # Notify user
                 if user_sid:
                     emit('user_left', {
                         'username': 'Admin',
-                        'message': 'Admin has left the chat. Waiting for admin to rejoin...'
+                        'message': 'Admin left. Waiting for admin to rejoin...'
                     }, room=user_sid)
                 
-                # Remove from active rooms
                 del active_rooms[room_id]
-                
-                # Cancel cleanup timer since we moved it to waiting
                 if room_id in cleanup_timers:
                     cleanup_timers[room_id].cancel()
                     del cleanup_timers[room_id]
-        
-        elif room_id in waiting_rooms:
-            # User disconnected from waiting room
-            print(f"[SERVER] User {username} disconnected from waiting room {room_id} - 30s grace period")
     
-    # Clean up session tracking (but preserve room structures for reconnection)
     if session_id in active_users:
         del active_users[session_id]
     if session_id in session_rooms:
@@ -338,7 +392,7 @@ def handle_disconnect():
 if __name__ == '__main__':
     print("=" * 50)
     print("WebSocket Chat Server (Room Queue System)")
-    print("With Persistent Rooms & Reconnection Support")
+    print("With Persistent Rooms & Smart Reconnection")
     print("=" * 50)
 
     socketio.run(
