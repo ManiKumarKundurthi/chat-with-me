@@ -12,6 +12,7 @@ import uuid
 from config import Config
 from flask_bcrypt import Bcrypt
 import os
+from threading import Timer
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = Config.SECRET_KEY
@@ -24,6 +25,7 @@ waiting_rooms = {}
 active_rooms = {}
 active_users = {}
 session_rooms = {}
+cleanup_timers = {}
 
 ADMIN_USERNAME = Config.ADMIN_USERNAME
 ADMIN_PASSWORD_HASH = Config.ADMIN_PASSWORD_HASH
@@ -38,6 +40,32 @@ def handle_connect():
     """Handle new client connections"""
     print(f"\n[SERVER] New connection attempt from {request.sid}")
     emit('connection_response', {'status': 'connected', 'sid': request.sid})
+
+def cleanup_abandoned_room(room_id):
+    """Clean up room if user hasn't reconnected within timeout"""
+    if room_id in waiting_rooms:
+        room_info = waiting_rooms[room_id]
+        session_id = room_info.get('session_id')
+        
+        if session_id not in active_users:
+            print(f"[SERVER] Cleaning up abandoned waiting room: {room_id}")
+            del waiting_rooms[room_id]
+    
+    if room_id in active_rooms:
+        room_info = active_rooms[room_id]
+        user_sid = room_info.get('user_sid')
+        
+        if user_sid not in active_users:
+            print(f"[SERVER] Cleaning up abandoned active room: {room_id}")
+            admin_sid = room_info.get('admin_sid')
+            if admin_sid:
+                socketio.emit('system_message', {
+                    'message': f'{room_info.get("username")} did not reconnect. Room closed.'
+                }, room=admin_sid)
+            del active_rooms[room_id]
+    
+    if room_id in cleanup_timers:
+        del cleanup_timers[room_id]
 
 @socketio.on('join_chat')
 def handle_join(data):
@@ -66,6 +94,13 @@ def handle_join(data):
         # Use client-provided room_id if available, otherwise generate one
         if requested_room_id:
             room_id = requested_room_id
+            
+            # Cancel cleanup timer if user is reconnecting
+            if room_id in cleanup_timers:
+                cleanup_timers[room_id].cancel()
+                del cleanup_timers[room_id]
+                print(f"[SERVER] User {username} reconnecting - cancelled cleanup timer for room {room_id}")
+            
             print(f"[SERVER] User {username} requesting specific room: {room_id}")
         else:
             # Fallback: generate room ID server-side (shouldn't happen with updated client)
@@ -82,7 +117,7 @@ def handle_join(data):
             
             emit('waiting_for_admin', {
                 'room_id': room_id,
-                'message': f'Reconnected to room {room_id}. Waiting for Admin to join...'
+                'message': f'Reconnected to room. Waiting for Admin to join...'
             })
             
         elif room_id in active_rooms:
@@ -94,14 +129,14 @@ def handle_join(data):
             
             emit('waiting_for_admin', {
                 'room_id': room_id,
-                'message': f'Reconnected to your chat with Admin'
+                'message': f'Reconnected to chat with Admin'
             })
             
             # Notify admin about reconnection
             admin_sid = active_rooms[room_id].get('admin_sid')
             if admin_sid:
                 emit('system_message', {
-                    'message': f'{username} has reconnected'
+                    'message': f'✅ {username} has reconnected'
                 }, room=admin_sid)
                 
         else:
@@ -228,36 +263,82 @@ def handle_message(data):
 
 @socketio.on('disconnect')
 def handle_disconnect():
-    """Handle client disconnection"""
+    """Handle client disconnection with reconnection grace period"""
     session_id = request.sid
     username = active_users.get(session_id, 'Unknown')
     room_id = session_rooms.get(session_id)
 
-    rooms_to_remove = [rid for rid, info in waiting_rooms.items() if info['session_id'] == session_id]
-    for rid in rooms_to_remove:
-        del waiting_rooms[rid]
-        print(f"[SERVER] Removed waiting room: {rid}")
+    print(f"[SERVER] {username} disconnected (Session: {session_id})")
 
-    if room_id and room_id in active_rooms:
-        emit('user_left', {
-            'username': username,
-            'message': f'{username} has left the chat'
-        }, room=room_id, include_self=False)
-
-        del active_rooms[room_id]
-        print(f"[SERVER] Room {room_id} closed - {username} disconnected")
-
+    # Give user 30 seconds to reconnect before cleaning up
+    if room_id:
+        # Cancel any existing timer for this room
+        if room_id in cleanup_timers:
+            cleanup_timers[room_id].cancel()
+        
+        # Schedule cleanup after 30 seconds
+        timer = Timer(30.0, cleanup_abandoned_room, [room_id])
+        timer.start()
+        cleanup_timers[room_id] = timer
+        
+        if room_id in active_rooms:
+            # Check if this is the user or admin disconnecting
+            if active_rooms[room_id].get('user_sid') == session_id:
+                # User disconnected from active room
+                print(f"[SERVER] User {username} disconnected from active room {room_id} - 30s grace period")
+                
+                # Notify admin but don't destroy room yet
+                admin_sid = active_rooms[room_id].get('admin_sid')
+                if admin_sid:
+                    emit('system_message', {
+                        'message': f'⚠️ {username} disconnected (may reconnect...)'
+                    }, room=admin_sid)
+                    
+            elif active_rooms[room_id].get('admin_sid') == session_id:
+                # Admin disconnected - move room back to waiting immediately
+                print(f"[SERVER] Admin disconnected from room {room_id} - moving back to waiting")
+                
+                user_sid = active_rooms[room_id].get('user_sid')
+                user_name = active_rooms[room_id].get('username')
+                
+                # Move room back to waiting rooms
+                waiting_rooms[room_id] = {
+                    'username': user_name,
+                    'session_id': user_sid,
+                    'created_at': datetime.now().isoformat(),
+                    'room_id': room_id
+                }
+                
+                # Notify user
+                if user_sid:
+                    emit('user_left', {
+                        'username': 'Admin',
+                        'message': 'Admin has left the chat. Waiting for admin to rejoin...'
+                    }, room=user_sid)
+                
+                # Remove from active rooms
+                del active_rooms[room_id]
+                
+                # Cancel cleanup timer since we moved it to waiting
+                if room_id in cleanup_timers:
+                    cleanup_timers[room_id].cancel()
+                    del cleanup_timers[room_id]
+        
+        elif room_id in waiting_rooms:
+            # User disconnected from waiting room
+            print(f"[SERVER] User {username} disconnected from waiting room {room_id} - 30s grace period")
+    
+    # Clean up session tracking (but preserve room structures for reconnection)
     if session_id in active_users:
         del active_users[session_id]
     if session_id in session_rooms:
         del session_rooms[session_id]
 
-    print(f"[SERVER] {username} disconnected")
-
 
 if __name__ == '__main__':
     print("=" * 50)
     print("WebSocket Chat Server (Room Queue System)")
+    print("With Persistent Rooms & Reconnection Support")
     print("=" * 50)
 
     socketio.run(
