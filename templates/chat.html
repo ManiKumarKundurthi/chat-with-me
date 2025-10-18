@@ -568,11 +568,10 @@
         let availableRooms = {};
         let sessionId = '';
         let currentRoomId = '';
+        let isIntentionalDisconnect = false;
         
         // Generate persistent room ID based on username
         function generateUserRoomId(username) {
-            // Create a consistent room ID for this user
-            // Hash the username to create a unique, reproducible ID
             let hash = 0;
             for (let i = 0; i < username.length; i++) {
                 hash = ((hash << 5) - hash) + username.charCodeAt(i);
@@ -581,7 +580,6 @@
             return 'room_' + Math.abs(hash).toString(36) + '_' + username.toLowerCase().replace(/[^a-z0-9]/g, '').substring(0, 5);
         }
         
-        // Generate or retrieve session ID
         function getSessionId() {
             let sid = sessionStorage.getItem('chatSessionId');
             if (!sid) {
@@ -591,7 +589,6 @@
             return sid;
         }
         
-        // Save messages to localStorage
         function saveMessages() {
             const messagesDiv = document.getElementById('messages');
             localStorage.setItem('chatMessages_' + sessionId, messagesDiv.innerHTML);
@@ -600,7 +597,6 @@
             localStorage.setItem('chatRoomId', currentRoomId);
         }
         
-        // Load messages from localStorage
         function loadMessages() {
             const savedMessages = localStorage.getItem('chatMessages_' + sessionId);
             if (savedMessages) {
@@ -610,7 +606,6 @@
             }
         }
         
-        // Clear messages from storage
         function clearMessages() {
             localStorage.removeItem('chatMessages_' + sessionId);
             localStorage.removeItem('chatUsername');
@@ -619,7 +614,6 @@
             sessionStorage.removeItem('chatSessionId');
         }
         
-        // Check if user was already connected
         function checkExistingSession() {
             sessionId = getSessionId();
             const savedUsername = localStorage.getItem('chatUsername');
@@ -629,28 +623,23 @@
                 username = savedUsername;
                 isAdmin = (savedIsAdmin === 'true');
                 
-                // Generate consistent room ID for this user
                 if (!isAdmin) {
                     currentRoomId = generateUserRoomId(username);
                 }
                 
-                // Auto-reconnect
                 document.getElementById('loginBox').classList.add('hidden');
                 document.getElementById('chatBox').classList.remove('hidden');
-                
-                // Load previous messages
                 loadMessages();
                 
-                // Reconnect socket
                 socket = io();
                 setupSocketListeners();
                 
-                // Rejoin with persistent room ID
                 if (!isAdmin && currentRoomId) {
                     socket.emit('join_chat', { 
                         username, 
                         password: '',
-                        room_id: currentRoomId
+                        room_id: currentRoomId,
+                        is_reconnect: true
                     });
                 } else {
                     socket.emit('join_chat', { username, password: '' });
@@ -686,7 +675,6 @@
             
             sessionId = getSessionId();
             
-            // Generate persistent room ID for non-admin users
             if (!isAdmin) {
                 currentRoomId = generateUserRoomId(username);
             }
@@ -694,17 +682,16 @@
             socket = io();
             setupSocketListeners();
             
-            // Send room_id with join request for non-admin users
             socket.emit('join_chat', { 
                 username, 
                 password,
-                room_id: isAdmin ? null : currentRoomId
+                room_id: isAdmin ? null : currentRoomId,
+                is_reconnect: false
             });
             
             document.getElementById('loginBox').classList.add('hidden');
             document.getElementById('chatBox').classList.remove('hidden');
             
-            // Save user info
             localStorage.setItem('chatUsername', username);
             localStorage.setItem('chatIsAdmin', isAdmin);
         }
@@ -861,7 +848,13 @@
         }
         
         function disconnectChat() {
+            isIntentionalDisconnect = true;
+            
             if (socket) {
+                socket.emit('intentional_disconnect', { 
+                    username,
+                    room_id: currentRoomId
+                });
                 socket.disconnect();
             }
             
@@ -918,9 +911,21 @@
             checkExistingSession();
         });
         
+        // Only save on refresh, not on intentional disconnect
         window.addEventListener('beforeunload', () => {
-            if (socket && socket.connected) {
+            if (socket && socket.connected && !isIntentionalDisconnect) {
                 saveMessages();
+            }
+        });
+        
+        // Detect tab/browser close (not refresh)
+        window.addEventListener('pagehide', () => {
+            if (!isIntentionalDisconnect && socket && socket.connected) {
+                // Real page close - tell server immediately
+                socket.emit('page_closed', {
+                    username,
+                    room_id: currentRoomId
+                });
             }
         });
     </script>
