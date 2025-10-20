@@ -21,3 +21,8 @@ class Config:
 
     # Flask secret key for sessions
     SECRET_KEY = os.getenv('SECRET_KEY', os.urandom(24).hex())
+
+    # NEW: Telegram Configuration
+    TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
+    TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
+    TELEGRAM_NOTIFICATIONS_ENABLED = os.getenv('TELEGRAM_NOTIFICATIONS_ENABLED', 'false').lower() == 'true'
