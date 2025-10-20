@@ -1,5 +1,5 @@
 """
-WebSocket Chat Server - Simple Room Queue System for Admin
+WebSocket Chat Server - Enhanced with Security & Features
 """
 # MUST be first - before any other imports
 import eventlet
@@ -12,11 +12,27 @@ import uuid
 from config import Config
 from flask_bcrypt import Bcrypt
 import os
+import html
+from collections import defaultdict
+import time
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = Config.SECRET_KEY
 app.config.from_object(Config)
-socketio = SocketIO(app, cors_allowed_origins="*")
+
+# CORS configuration for Render.com deployment
+# Replace with your actual Render URL
+ALLOWED_ORIGINS = [
+    "https://chat-with-mani.onrender.com",
+    "http://localhost:5000",  # For local development
+]
+
+socketio = SocketIO(
+    app, 
+    cors_allowed_origins=ALLOWED_ORIGINS,
+    ping_timeout=60,
+    ping_interval=25
+)
 bcrypt = Bcrypt(app)
 
 # Store room information
@@ -24,14 +40,68 @@ waiting_rooms = {}
 active_rooms = {}
 active_users = {}
 session_rooms = {}
+typing_status = {}  # Track typing indicators
+
+# Rate limiting storage
+rate_limit_storage = defaultdict(lambda: {'count': 0, 'reset_time': time.time()})
 
 ADMIN_USERNAME = Config.ADMIN_USERNAME
 ADMIN_PASSWORD_HASH = Config.ADMIN_PASSWORD_HASH
+
+# Rate limiting constants
+MESSAGE_RATE_LIMIT = 10  # messages per window
+RATE_LIMIT_WINDOW = 60  # seconds
+
+
+def rate_limit_check(session_id, limit=MESSAGE_RATE_LIMIT, window=RATE_LIMIT_WINDOW):
+    """Check if user has exceeded rate limit"""
+    current_time = time.time()
+    user_data = rate_limit_storage[session_id]
+    
+    # Reset counter if window has passed
+    if current_time - user_data['reset_time'] > window:
+        user_data['count'] = 0
+        user_data['reset_time'] = current_time
+    
+    # Check if limit exceeded
+    if user_data['count'] >= limit:
+        return False
+    
+    user_data['count'] += 1
+    return True
+
+
+def sanitize_input(text, max_length=1000):
+    """Sanitize and validate user input"""
+    if not text or not isinstance(text, str):
+        return None
+    
+    # Strip whitespace and limit length
+    text = text.strip()[:max_length]
+    
+    # Escape HTML to prevent XSS
+    text = html.escape(text)
+    
+    return text if text else None
+
+
+def cleanup_old_rooms():
+    """Remove rooms older than 2 hours"""
+    from datetime import timedelta
+    now = datetime.now()
+    
+    for room_id in list(waiting_rooms.keys()):
+        created = datetime.fromisoformat(waiting_rooms[room_id]['created_at'])
+        if now - created > timedelta(hours=2):
+            print(f"[CLEANUP] Removing stale room: {room_id}")
+            del waiting_rooms[room_id]
+
 
 @app.route('/')
 def index():
     """Serve the web chat client"""
     return render_template('chat.html')
+
 
 @socketio.on('connect')
 def handle_connect():
@@ -39,12 +109,17 @@ def handle_connect():
     print(f"\n[SERVER] New connection from {request.sid}")
     emit('connection_response', {'status': 'connected', 'sid': request.sid})
 
+
 @socketio.on('join_chat')
 def handle_join(data):
     """Handle user joining - creates room"""
-    username = data.get('username', 'Anonymous')
+    username = sanitize_input(data.get('username', 'Anonymous'), max_length=50)
     password = data.get('password', '')
     session_id = request.sid
+    
+    if not username:
+        emit('auth_failed', {'message': 'Invalid username'})
+        return
 
     # Admin authentication
     if username == ADMIN_USERNAME:
@@ -55,6 +130,10 @@ def handle_join(data):
 
         active_users[session_id] = username
         print(f"[SERVER] Admin authenticated (Session: {session_id})")
+        
+        # Clean up old rooms on admin login
+        cleanup_old_rooms()
+        
         emit('admin_connected', {
             'message': 'Connected as Admin'
         })
@@ -89,6 +168,7 @@ def handle_join(data):
                     'created_at': waiting_rooms[room_id]['created_at']
                 }, room=sid)
 
+
 @socketio.on('list_rooms')
 def handle_list_rooms():
     """Admin requests list of waiting rooms"""
@@ -108,6 +188,7 @@ def handle_list_rooms():
         })
 
     emit('rooms_list', {'rooms': rooms_list})
+
 
 @socketio.on('join_room_by_id')
 def handle_admin_join_room(data):
@@ -149,15 +230,24 @@ def handle_admin_join_room(data):
         'message': 'Admin has joined the chat!'
     }, room=user_sid)
 
+
 @socketio.on('send_message')
 def handle_message(data):
-    """Handle incoming messages"""
+    """Handle incoming messages with rate limiting and validation"""
     session_id = request.sid
     username = active_users.get(session_id, 'Anonymous')
-    message_text = data.get('message', '')
+    message_text = sanitize_input(data.get('message', ''))
     room_id = session_rooms.get(session_id)
 
-    if not message_text.strip():
+    # Rate limiting check
+    if not rate_limit_check(session_id):
+        emit('system_message', {
+            'message': 'Rate limit exceeded. Please slow down.'
+        })
+        return
+
+    if not message_text:
+        emit('system_message', {'message': 'Message cannot be empty'})
         return
 
     if not room_id:
@@ -181,7 +271,36 @@ def handle_message(data):
 
     print(f"[Room:{room_id}] {username}: {message_text}")
 
+    # Clear typing indicator when message is sent
+    typing_key = f"{room_id}:{session_id}"
+    if typing_key in typing_status:
+        del typing_status[typing_key]
+        emit('user_stopped_typing', {'username': username}, room=room_id, include_self=False)
+
     emit('receive_message', message_obj, room=room_id, include_self=False)
+
+
+@socketio.on('typing')
+def handle_typing(data):
+    """Handle typing indicator"""
+    session_id = request.sid
+    username = active_users.get(session_id, 'Anonymous')
+    room_id = session_rooms.get(session_id)
+    is_typing = data.get('typing', False)
+
+    if not room_id or room_id not in active_rooms:
+        return
+
+    typing_key = f"{room_id}:{session_id}"
+
+    if is_typing:
+        typing_status[typing_key] = True
+        emit('user_typing', {'username': username}, room=room_id, include_self=False)
+    else:
+        if typing_key in typing_status:
+            del typing_status[typing_key]
+        emit('user_stopped_typing', {'username': username}, room=room_id, include_self=False)
+
 
 @socketio.on('disconnect')
 def handle_disconnect():
@@ -189,6 +308,12 @@ def handle_disconnect():
     session_id = request.sid
     username = active_users.get(session_id, 'Unknown')
     room_id = session_rooms.get(session_id)
+
+    # Clear typing status
+    if room_id:
+        typing_key = f"{room_id}:{session_id}"
+        if typing_key in typing_status:
+            del typing_status[typing_key]
 
     # Remove waiting rooms
     rooms_to_remove = [rid for rid, info in waiting_rooms.items() if info['session_id'] == session_id]
@@ -211,13 +336,15 @@ def handle_disconnect():
         del active_users[session_id]
     if session_id in session_rooms:
         del session_rooms[session_id]
+    if session_id in rate_limit_storage:
+        del rate_limit_storage[session_id]
 
     print(f"[SERVER] {username} disconnected")
 
 
 if __name__ == '__main__':
     print("=" * 50)
-    print("WebSocket Chat Server - Simple Version")
+    print("WebSocket Chat Server - Enhanced Version")
     print("=" * 50)
 
     socketio.run(
