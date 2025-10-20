@@ -401,23 +401,38 @@ button:disabled {
     font-size: 15px;
 }
 
-/* Typing Indicator */
+/* Typing Indicator - Inside Chat Window */
 .typing-indicator {
-    padding: 10px 16px;
-    margin-bottom: 10px;
-    background: rgba(58, 59, 60, 0.5);
-    border-radius: 10px;
-    font-size: 14px;
+    padding: 12px 16px;
+    margin: 10px 0;
+    border-radius: 12px;
+    max-width: 75%;
+    background: #3a3b3c;
     color: #b0b3b8;
-    animation: fadeIn 0.3s ease-out;
+    font-size: 14px;
+    animation: messageSlide 0.3s ease-out;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.typing-indicator-text {
+    color: #b0b3b8;
 }
 
 .typing-dots {
-    display: inline-block;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
     margin-left: 5px;
 }
 
 .typing-dots span {
+    width: 6px;
+    height: 6px;
+    background: #b0b3b8;
+    border-radius: 50%;
+    display: inline-block;
     animation: typingDot 1.4s infinite;
     opacity: 0;
 }
@@ -598,10 +613,12 @@ button:disabled {
 
 @keyframes typingDot {
     0%, 60%, 100% {
-        opacity: 0;
+        opacity: 0.3;
+        transform: scale(0.8);
     }
     30% {
         opacity: 1;
+        transform: scale(1.2);
     }
 }
 
