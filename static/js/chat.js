@@ -417,22 +417,45 @@ function stopTyping() {
 }
 
 /**
- * Show typing indicator
+ * Show typing indicator inside chat window
  */
 function showTypingIndicator(username) {
-    const indicator = document.getElementById('typingIndicator');
-    const userSpan = document.getElementById('typingUser');
+    // Remove any existing typing indicator
+    const existingIndicator = document.querySelector('.typing-indicator');
+    if (existingIndicator) {
+        existingIndicator.remove();
+    }
     
-    userSpan.textContent = username;
-    indicator.classList.remove('hidden');
+    const messagesDiv = document.getElementById('messages');
+    
+    // Create typing indicator bubble
+    const typingDiv = document.createElement('div');
+    typingDiv.className = 'typing-indicator';
+    typingDiv.id = 'activeTypingIndicator';
+    
+    typingDiv.innerHTML = `
+        <span class="typing-indicator-text">${username} is typing</span>
+        <span class="typing-dots">
+            <span></span>
+            <span></span>
+            <span></span>
+        </span>
+    `;
+    
+    messagesDiv.appendChild(typingDiv);
+    
+    // Auto-scroll to show typing indicator
+    messagesDiv.scrollTop = messagesDiv.scrollHeight;
 }
 
 /**
  * Hide typing indicator
  */
 function hideTypingIndicator() {
-    const indicator = document.getElementById('typingIndicator');
-    indicator.classList.add('hidden');
+    const indicator = document.getElementById('activeTypingIndicator');
+    if (indicator) {
+        indicator.remove();
+    }
 }
 
 // ============================================
