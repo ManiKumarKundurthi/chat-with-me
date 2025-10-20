@@ -1,505 +1,11 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Chat with Me</title>
     <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { 
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif; 
-            background: #0a0a0a; 
-            color: #e4e6eb;
-            overflow-x: hidden;
-        }
-        
-        .container { 
-            max-width: 800px; 
-            margin: 0 auto; 
-            padding: 20px; 
-            animation: slideIn 0.5s ease-out;
-        }
-        
-        .login-box, .chat-box { 
-            background: #242526; 
-            border-radius: 12px; 
-            padding: 35px; 
-            box-shadow: 0 4px 20px rgba(0,0,0,0.6);
-            animation: fadeIn 0.6s ease-out;
-        }
-        
-        h1 { 
-            color: #e4e6eb; 
-            margin-bottom: 20px; 
-            text-align: center;
-            font-size: 28px;
-            animation: slideDown 0.6s ease-out;
-        }
-        
-        /* Role Selection */
-        .role-selection { 
-            display: flex; 
-            gap: 15px; 
-            justify-content: center; 
-            margin-bottom: 25px; 
-        }
-        
-        .role-btn { 
-            padding: 16px 35px; 
-            border: 2px solid #0084ff; 
-            background: #242526; 
-            color: #0084ff; 
-            border-radius: 10px; 
-            cursor: pointer; 
-            font-size: 16px; 
-            font-weight: 600;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            position: relative;
-            overflow: hidden;
-        }
-        
-        .role-btn::before {
-            content: '';
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            width: 0;
-            height: 0;
-            border-radius: 50%;
-            background: rgba(0, 132, 255, 0.2);
-            transform: translate(-50%, -50%);
-            transition: width 0.6s, height 0.6s;
-        }
-        
-        .role-btn:hover::before {
-            width: 300px;
-            height: 300px;
-        }
-        
-        .role-btn:hover { 
-            background: #0084ff; 
-            color: white; 
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(0, 132, 255, 0.4);
-        }
-        
-        .role-btn.active { 
-            background: #0084ff; 
-            color: white;
-            transform: scale(1.05);
-            box-shadow: 0 6px 20px rgba(0, 132, 255, 0.5);
-        }
-        
-        /* Inputs */
-        input[type="text"], input[type="password"] { 
-            width: 100%; 
-            padding: 14px 16px; 
-            margin: 10px 0; 
-            border: 2px solid #3a3b3c; 
-            border-radius: 10px; 
-            font-size: 15px;
-            background: #3a3b3c; 
-            color: #e4e6eb;
-            transition: all 0.3s ease;
-        }
-        
-        input:focus {
-            outline: none;
-            border-color: #0084ff;
-            background: #404142;
-            box-shadow: 0 0 0 3px rgba(0, 132, 255, 0.1);
-            transform: translateY(-1px);
-        }
-        
-        input::placeholder { color: #b0b3b8; }
-        
-        /* Dropdown */
-        select {
-            width: 100%; 
-            padding: 14px 16px; 
-            margin: 10px 0;
-            border: 2px solid #4ade80; 
-            border-radius: 10px; 
-            font-size: 15px;
-            background: #242526; 
-            color: #4ade80; 
-            cursor: pointer;
-            transition: all 0.3s ease;
-            font-weight: 500;
-            appearance: none;
-            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 20 20'%3E%3Cpath fill='%234ade80' d='M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z'/%3E%3C/svg%3E");
-            background-repeat: no-repeat;
-            background-position: right 12px center;
-            padding-right: 40px;
-        }
-        
-        select:hover {
-            border-color: #22c55e;
-            background-color: #1f4a29;
-            transform: translateY(-1px);
-            box-shadow: 0 4px 12px rgba(74, 222, 128, 0.2);
-        }
-        
-        select:focus {
-            outline: none;
-            border-color: #22c55e;
-            box-shadow: 0 0 0 3px rgba(74, 222, 128, 0.2);
-        }
-        
-        select:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-            transform: none;
-        }
-        
-        select option { 
-            background: #242526; 
-            color: #e4e6eb; 
-            padding: 12px;
-        }
-        
-        select option:hover {
-            background: #3a3b3c;
-        }
-        
-        /* Buttons */
-        button { 
-            width: 100%; 
-            padding: 14px; 
-            background: linear-gradient(135deg, #0084ff 0%, #0066cc 100%); 
-            color: white; 
-            border: none; 
-            border-radius: 10px; 
-            font-size: 16px; 
-            font-weight: 600;
-            cursor: pointer; 
-            margin-top: 10px;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            position: relative;
-            overflow: hidden;
-        }
-        
-        button::after {
-            content: '';
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            width: 0;
-            height: 0;
-            border-radius: 50%;
-            background: rgba(255, 255, 255, 0.3);
-            transform: translate(-50%, -50%);
-            transition: width 0.6s, height 0.6s;
-        }
-        
-        button:hover::after {
-            width: 300px;
-            height: 300px;
-        }
-        
-        button:hover { 
-            transform: translateY(-2px);
-            box-shadow: 0 8px 25px rgba(0, 132, 255, 0.4);
-        }
-        
-        button:active {
-            transform: translateY(0);
-        }
-        
-        button:disabled { 
-            background: #3a3b3c; 
-            cursor: not-allowed;
-            transform: none;
-        }
-        
-        .disconnect-btn { 
-            background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%); 
-            margin-top: 0;
-            animation: pulse 2s infinite;
-        }
-        
-        .disconnect-btn:hover { 
-            box-shadow: 0 8px 25px rgba(220, 38, 38, 0.4);
-        }
-        
-        /* Status Bar */
-        .status { 
-            padding: 12px; 
-            margin-bottom: 15px; 
-            border-radius: 10px; 
-            text-align: center;
-            font-weight: 600;
-            animation: slideDown 0.5s ease-out;
-            transition: all 0.3s ease;
-        }
-        
-        .status.connected { 
-            background: linear-gradient(135deg, #1f4a29 0%, #15803d 100%); 
-            color: #4ade80; 
-            border: 2px solid #4ade80;
-            box-shadow: 0 4px 15px rgba(74, 222, 128, 0.2);
-        }
-        
-        .status.waiting { 
-            background: linear-gradient(135deg, #4a3c1f 0%, #92400e 100%); 
-            color: #fbbf24; 
-            border: 2px solid #fbbf24;
-            box-shadow: 0 4px 15px rgba(251, 191, 36, 0.2);
-        }
-        
-        /* Header Row */
-        .header-row { 
-            display: flex; 
-            justify-content: space-between; 
-            align-items: center; 
-            margin-bottom: 20px;
-            animation: slideDown 0.6s ease-out;
-        }
-        
-        .header-row h1 { margin: 0; }
-        .header-row button { 
-            width: auto; 
-            padding: 11px 22px; 
-            margin: 0; 
-            font-size: 14px;
-        }
-        
-        /* Messages Area */
-        .messages { 
-            height: 400px; 
-            overflow-y: auto; 
-            padding: 18px; 
-            background: #18191a; 
-            border-radius: 12px; 
-            margin-bottom: 15px; 
-            border: 2px solid #3a3b3c;
-            animation: fadeIn 0.6s ease-out;
-        }
-        
-        .message { 
-            padding: 12px 16px; 
-            margin: 10px 0; 
-            border-radius: 12px; 
-            max-width: 75%; 
-            word-wrap: break-word;
-            animation: messageSlide 0.3s ease-out;
-            transition: transform 0.2s ease;
-        }
-        
-        .message:hover {
-            transform: translateX(2px);
-        }
-        
-        .message.own { 
-            background: linear-gradient(135deg, #0084ff 0%, #0066cc 100%); 
-            color: white; 
-            margin-left: auto;
-            box-shadow: 0 2px 8px rgba(0, 132, 255, 0.3);
-        }
-        
-        .message.other { 
-            background: #3a3b3c; 
-            color: #e4e6eb;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-        }
-        
-        .message.system { 
-            background: linear-gradient(135deg, #4a3c1f 0%, #78350f 100%); 
-            color: #fbbf24; 
-            margin: 12px auto; 
-            text-align: center; 
-            max-width: 90%; 
-            border: 2px solid #fbbf24;
-            box-shadow: 0 2px 8px rgba(251, 191, 36, 0.2);
-            font-size: 14px;
-        }
-        
-        /* Input Area */
-        .input-area { 
-            display: flex; 
-            gap: 12px;
-            animation: slideUp 0.5s ease-out;
-        }
-        
-        .input-area input { 
-            flex: 1; 
-            margin: 0;
-        }
-        
-        .input-area button { 
-            width: auto; 
-            padding: 14px 28px; 
-            margin: 0;
-        }
-        
-        .hidden { display: none; }
-        
-        /* Room Selector */
-        .room-selector { 
-            background: linear-gradient(135deg, #1f4a29 0%, #15803d 100%); 
-            padding: 18px; 
-            border-radius: 12px; 
-            margin-bottom: 15px; 
-            border: 2px solid #4ade80;
-            box-shadow: 0 4px 15px rgba(74, 222, 128, 0.2);
-            animation: slideDown 0.5s ease-out;
-        }
-        
-        .room-selector label { 
-            display: block; 
-            margin-bottom: 10px; 
-            font-weight: 700; 
-            color: #4ade80;
-            font-size: 16px;
-        }
-        
-        .room-selector select { 
-            margin: 0;
-        }
-        
-        .room-info { 
-            font-size: 13px; 
-            color: #d1fae5; 
-            margin-top: 8px;
-            font-weight: 500;
-        }
-        
-        /* Commands Box */
-        .commands { 
-            background: linear-gradient(135deg, #1e3a5f 0%, #1e40af 100%); 
-            padding: 12px 16px; 
-            border-radius: 10px; 
-            margin-bottom: 15px; 
-            font-size: 13px; 
-            border: 2px solid #0084ff;
-            animation: slideDown 0.5s ease-out;
-        }
-        
-        .commands strong { 
-            display: block; 
-            margin-bottom: 5px; 
-            color: #60a5fa;
-            font-size: 14px;
-        }
-        
-        /* Welcome Message */
-        .welcome-message {
-            background: linear-gradient(135deg, #1e3a5f 0%, #1e40af 100%); 
-            padding: 24px; 
-            border-radius: 12px; 
-            margin-bottom: 15px; 
-            border: 2px solid #0084ff; 
-            text-align: center;
-            animation: scaleIn 0.5s ease-out;
-        }
-        
-        .welcome-message h2 { 
-            color: #60a5fa; 
-            margin-bottom: 12px; 
-            font-size: 20px;
-        }
-        
-        .welcome-message p { 
-            color: #cbd5e1; 
-            line-height: 1.7;
-            font-size: 15px;
-        }
-        
-        /* Custom Scrollbar */
-        .messages::-webkit-scrollbar { width: 10px; }
-        .messages::-webkit-scrollbar-track { 
-            background: #242526; 
-            border-radius: 10px;
-        }
-        .messages::-webkit-scrollbar-thumb { 
-            background: linear-gradient(135deg, #3a3b3c 0%, #4a4b4c 100%); 
-            border-radius: 10px;
-            transition: background 0.3s ease;
-        }
-        .messages::-webkit-scrollbar-thumb:hover { 
-            background: linear-gradient(135deg, #4a4b4c 0%, #5a5b5c 100%);
-        }
-        
-        /* Animations */
-        @keyframes fadeIn {
-            from { opacity: 0; }
-            to { opacity: 1; }
-        }
-        
-        @keyframes slideIn {
-            from { 
-                opacity: 0; 
-                transform: translateX(-20px); 
-            }
-            to { 
-                opacity: 1; 
-                transform: translateX(0); 
-            }
-        }
-        
-        @keyframes slideDown {
-            from { 
-                opacity: 0; 
-                transform: translateY(-15px); 
-            }
-            to { 
-                opacity: 1; 
-                transform: translateY(0); 
-            }
-        }
-        
-        @keyframes slideUp {
-            from { 
-                opacity: 0; 
-                transform: translateY(15px); 
-            }
-            to { 
-                opacity: 1; 
-                transform: translateY(0); 
-            }
-        }
-        
-        @keyframes messageSlide {
-            from { 
-                opacity: 0; 
-                transform: translateX(-10px); 
-            }
-            to { 
-                opacity: 1; 
-                transform: translateX(0); 
-            }
-        }
-        
-        @keyframes scaleIn {
-            from { 
-                opacity: 0; 
-                transform: scale(0.95); 
-            }
-            to { 
-                opacity: 1; 
-                transform: scale(1); 
-            }
-        }
-        
-        @keyframes pulse {
-            0%, 100% { 
-                opacity: 1; 
-            }
-            50% { 
-                opacity: 0.85; 
-            }
-        }
-        
-        /* Responsive Design */
-        @media (max-width: 600px) {
-            .container { padding: 15px; }
-            .login-box, .chat-box { padding: 25px; }
-            h1 { font-size: 24px; }
-            .role-selection { flex-direction: column; }
-            .role-btn { width: 100%; }
-            .header-row { flex-direction: column; gap: 10px; }
-            .header-row button { width: 100%; }
-        }
-    </style>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/chat.css') }}">
 </head>
 <body>
     <div class="container">
@@ -508,26 +14,26 @@
             <h1>💬 Chat with Me</h1>
             
             <div class="role-selection">
-                <button class="role-btn active" onclick="selectRole('user')">👤 User</button>
-                <button class="role-btn" onclick="selectRole('admin')">🔐 Admin</button>
+                <button class="role-btn active" data-role="user">👤 User</button>
+                <button class="role-btn" data-role="admin">🔐 Admin</button>
             </div>
             
             <div id="userFields">
-                <input type="text" id="username" placeholder="Enter your name" />
+                <input type="text" id="username" placeholder="Enter your name" maxlength="50" />
             </div>
             
             <div id="adminFields" class="hidden">
                 <input type="password" id="password" placeholder="Enter admin password" />
             </div>
             
-            <button onclick="connect()">Start Chat</button>
+            <button id="connectBtn">Start Chat</button>
         </div>
         
         <!-- Chat Screen -->
         <div id="chatBox" class="chat-box hidden">
             <div class="header-row">
                 <h1>💬 Chat</h1>
-                <button class="disconnect-btn" onclick="disconnectChat()">Disconnect</button>
+                <button class="disconnect-btn" id="disconnectBtn">Disconnect</button>
             </div>
             
             <div id="status" class="status">Connecting...</div>
@@ -538,268 +44,55 @@
                 <p>Thank you for connecting! Your chat room has been created. Please wait while the admin joins your room. You'll be notified when they're ready to chat with you.</p>
             </div>
             
-            <!-- Room Selector for Admin -->
-            <div id="roomSelector" class="room-selector hidden">
-                <label>📋 Available Rooms:</label>
-                <select id="roomDropdown" onchange="joinSelectedRoom()">
-                    <option value="">-- Select a room to join --</option>
-                </select>
-                <div class="room-info" id="roomInfo">Waiting for users to connect...</div>
+            <!-- Admin Dashboard -->
+            <div id="adminDashboard" class="admin-dashboard hidden">
+                <div class="dashboard-header">
+                    <h2>📊 Admin Dashboard</h2>
+                    <button id="refreshRoomsBtn" class="refresh-btn">🔄 Refresh</button>
+                </div>
+                
+                <div class="dashboard-stats">
+                    <div class="stat-card">
+                        <div class="stat-number" id="waitingCount">0</div>
+                        <div class="stat-label">Waiting Users</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number" id="activeCount">0</div>
+                        <div class="stat-label">Active Chats</div>
+                    </div>
+                </div>
+                
+                <div class="room-selector">
+                    <label>📋 Available Rooms:</label>
+                    <select id="roomDropdown">
+                        <option value="">-- Select a room to join --</option>
+                    </select>
+                    <div class="room-info" id="roomInfo">Waiting for users to connect...</div>
+                </div>
             </div>
             
             <div id="commands" class="commands hidden">
                 <strong>💡 Admin Tips:</strong>
-                Select rooms from dropdown above | Type messages normally to chat
+                Select rooms from dashboard above | Type messages normally to chat
+            </div>
+            
+            <!-- Typing Indicator -->
+            <div id="typingIndicator" class="typing-indicator hidden">
+                <span id="typingUser"></span> is typing
+                <span class="typing-dots">
+                    <span>.</span><span>.</span><span>.</span>
+                </span>
             </div>
             
             <div id="messages" class="messages"></div>
             
             <div class="input-area">
-                <input type="text" id="messageInput" placeholder="Type your message..." onkeypress="handleKeyPress(event)" />
-                <button onclick="sendMessage()">Send</button>
+                <input type="text" id="messageInput" placeholder="Type your message..." maxlength="1000" />
+                <button id="sendBtn">Send</button>
             </div>
         </div>
     </div>
 
-    <script>
-        let socket;
-        let isAdmin = false;
-        let username = '';
-        let availableRooms = {};
-        let currentRoomId = '';
-        
-        function connect() {
-            username = isAdmin ? 'DARK' : document.getElementById('username').value.trim();
-            const password = isAdmin ? document.getElementById('password').value : '';
-            
-            if (!username) {
-                alert('Please enter your name');
-                return;
-            }
-            
-            if (isAdmin && !password) {
-                alert('Please enter admin password');
-                return;
-            }
-            
-            socket = io();
-            setupSocketListeners();
-            
-            socket.emit('join_chat', { username, password });
-            
-            document.getElementById('loginBox').classList.add('hidden');
-            document.getElementById('chatBox').classList.remove('hidden');
-        }
-        
-        function setupSocketListeners() {
-            socket.on('connect', () => {
-                console.log('Connected to server');
-            });
-            
-            socket.on('auth_failed', (data) => {
-                alert(data.message);
-                location.reload();
-            });
-            
-            socket.on('admin_connected', (data) => {
-                showStatus('Connected as Admin - Waiting for users...', 'connected');
-                document.getElementById('commands').classList.remove('hidden');
-                document.getElementById('roomSelector').classList.remove('hidden');
-                document.getElementById('welcomeMessage').classList.add('hidden');
-                socket.emit('list_rooms');
-            });
-            
-            socket.on('waiting_for_admin', (data) => {
-                currentRoomId = data.room_id;
-                showStatus(data.message, 'waiting');
-                document.getElementById('welcomeMessage').classList.remove('hidden');
-                addMessage(data.message, 'system');
-            });
-            
-            socket.on('admin_joined', (data) => {
-                showStatus('Admin has joined! You can start chatting.', 'connected');
-                document.getElementById('welcomeMessage').classList.add('hidden');
-                addMessage('✅ Admin has joined the chat!', 'system');
-            });
-            
-            socket.on('joined_room', (data) => {
-                currentRoomId = data.room_id;
-                showStatus(`💬 Chatting with: ${data.username}`, 'connected');
-                document.getElementById('roomSelector').classList.add('hidden');
-                addMessage(`✅ Connected to ${data.username}'s room`, 'system');
-            });
-            
-            socket.on('new_room_available', (data) => {
-                addMessage(`🔔 New user waiting: ${data.username}`, 'system');
-                availableRooms[data.room_id] = {
-                    username: data.username,
-                    created_at: data.created_at
-                };
-                updateRoomDropdown();
-            });
-            
-            socket.on('rooms_list', (data) => {
-                availableRooms = {};
-                data.rooms.forEach(room => {
-                    availableRooms[room.room_id] = {
-                        username: room.username,
-                        created_at: room.created_at
-                    };
-                });
-                updateRoomDropdown();
-            });
-            
-            socket.on('receive_message', (data) => {
-                addMessage(`${data.username}: ${data.message}`, 'other');
-            });
-            
-            socket.on('system_message', (data) => {
-                addMessage(data.message, 'system');
-            });
-            
-            socket.on('user_left', (data) => {
-                addMessage(data.message, 'system');
-                if (isAdmin) {
-                    document.getElementById('roomSelector').classList.remove('hidden');
-                    socket.emit('list_rooms');
-                }
-            });
-            
-            socket.on('disconnect', () => {
-                showStatus('Disconnected from server', 'waiting');
-            });
-        }
-        
-        function selectRole(role) {
-            document.querySelectorAll('.role-btn').forEach(btn => btn.classList.remove('active'));
-            event.target.classList.add('active');
-            
-            isAdmin = (role === 'admin');
-            document.getElementById('userFields').classList.toggle('hidden', isAdmin);
-            document.getElementById('adminFields').classList.toggle('hidden', !isAdmin);
-        }
-        
-        function updateRoomDropdown() {
-            const dropdown = document.getElementById('roomDropdown');
-            const roomInfo = document.getElementById('roomInfo');
-            
-            dropdown.innerHTML = '<option value="">-- Select a room to join --</option>';
-            
-            const roomCount = Object.keys(availableRooms).length;
-            
-            if (roomCount === 0) {
-                roomInfo.textContent = 'No users waiting. Rooms will appear here when users connect.';
-                dropdown.disabled = true;
-            } else {
-                roomInfo.textContent = `${roomCount} user(s) waiting to chat with you`;
-                dropdown.disabled = false;
-                
-                Object.entries(availableRooms).forEach(([roomId, info]) => {
-                    const option = document.createElement('option');
-                    option.value = roomId;
-                    const time = new Date(info.created_at).toLocaleTimeString();
-                    option.textContent = `${info.username} (${roomId.substring(0, 8)}... at ${time})`;
-                    dropdown.appendChild(option);
-                });
-            }
-        }
-        
-        function joinSelectedRoom() {
-            const dropdown = document.getElementById('roomDropdown');
-            const roomId = dropdown.value;
-            
-            if (!roomId) return;
-            
-            socket.emit('join_room_by_id', { room_id: roomId });
-            delete availableRooms[roomId];
-            updateRoomDropdown();
-        }
-        
-        function sendMessage() {
-            const input = document.getElementById('messageInput');
-            const message = input.value.trim();
-            
-            if (!message) return;
-            
-            socket.emit('send_message', { message });
-            addMessage(`You: ${message}`, 'own');
-            
-            input.value = '';
-        }
-        
-        function handleKeyPress(event) {
-            if (event.key === 'Enter') {
-                sendMessage();
-            }
-        }
-        
-        function addMessage(text, type) {
-            const messagesDiv = document.getElementById('messages');
-            const messageDiv = document.createElement('div');
-            messageDiv.className = `message ${type}`;
-            messageDiv.textContent = text;
-            messagesDiv.appendChild(messageDiv);
-            messagesDiv.scrollTop = messagesDiv.scrollHeight;
-        }
-        
-        function showStatus(message, type) {
-            const statusDiv = document.getElementById('status');
-            statusDiv.textContent = message;
-            statusDiv.className = `status ${type}`;
-        }
-        
-        function disconnectChat() {
-            if (socket) {
-                socket.disconnect();
-            }
-            
-            document.getElementById('chatBox').classList.add('hidden');
-            document.getElementById('loginBox').classList.add('hidden');
-            showThankYouScreen();
-        }
-        
-        function showThankYouScreen() {
-            const container = document.querySelector('.container');
-            
-            const thankYouHTML = `
-                <div class="login-box" style="text-align: center; animation: scaleIn 0.6s ease-out;">
-                    <div style="font-size: 70px; margin-bottom: 20px; animation: pulse 2s infinite;">🎉</div>
-                    <h1 style="color: #4ade80; margin-bottom: 15px; font-size: 32px;">Thank You for Chatting!</h1>
-                    <p style="color: #b0b3b8; font-size: 16px; line-height: 1.8; margin-bottom: 30px;">
-                        ${isAdmin ? 
-                            'Your session has ended.' : 
-                            'We appreciate you taking the time to connect with us. Your chat session has ended.'}
-                    </p>
-                    
-                    <div style="background: linear-gradient(135deg, #1e3a5f 0%, #1e40af 100%); padding: 25px; border-radius: 12px; margin-bottom: 30px; border: 2px solid #0084ff; box-shadow: 0 4px 20px rgba(0, 132, 255, 0.3);">
-                        <p style="color: #60a5fa; font-size: 15px; margin-bottom: 15px; font-weight: 600;">
-                            ⭐ Like this project? Check out the source code!
-                        </p>
-                        <a href="https://github.com/ManiKumarKundurthi/chat-with-me/tree/main" 
-                           target="_blank"
-                           style="display: inline-block; background: linear-gradient(135deg, #0084ff 0%, #0066cc 100%); color: white; padding: 14px 35px; 
-                                  border-radius: 10px; text-decoration: none; font-weight: bold; font-size: 15px;
-                                  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); box-shadow: 0 4px 15px rgba(0, 132, 255, 0.3);">
-                            🔗 View on GitHub
-                        </a>
-                    </div>
-                    
-                    <button onclick="location.reload()" 
-                            style="background: linear-gradient(135deg, #4ade80 0%, #22c55e 100%); color: #0a0a0a; font-weight: bold; font-size: 16px; box-shadow: 0 4px 15px rgba(74, 222, 128, 0.3);">
-                        ↻ Start New Chat
-                    </button>
-                </div>
-                
-                <style>
-                    a:hover {
-                        transform: translateY(-2px) !important;
-                        box-shadow: 0 8px 25px rgba(0, 132, 255, 0.5) !important;
-                    }
-                </style>
-            `;
-            
-            container.innerHTML = thankYouHTML;
-        }
-    </script>
+    <script src="{{ url_for('static', filename='js/chat.js') }}"></script>
 </body>
 </html>
