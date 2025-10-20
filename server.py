@@ -15,16 +15,17 @@ import os
 import html
 from collections import defaultdict
 import time
+import requests  # For Telegram API
+import threading  # For async notifications
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = Config.SECRET_KEY
 app.config.from_object(Config)
 
 # CORS configuration for Render.com deployment
-# Replace with your actual Render URL
 ALLOWED_ORIGINS = [
     "https://chat-with-mani.onrender.com",
-    "http://localhost:5000",  # For local development
+    "http://localhost:5000",
 ]
 
 socketio = SocketIO(
@@ -40,7 +41,7 @@ waiting_rooms = {}
 active_rooms = {}
 active_users = {}
 session_rooms = {}
-typing_status = {}  # Track typing indicators
+typing_status = {}
 
 # Rate limiting storage
 rate_limit_storage = defaultdict(lambda: {'count': 0, 'reset_time': time.time()})
@@ -49,21 +50,122 @@ ADMIN_USERNAME = Config.ADMIN_USERNAME
 ADMIN_PASSWORD_HASH = Config.ADMIN_PASSWORD_HASH
 
 # Rate limiting constants
-MESSAGE_RATE_LIMIT = 10  # messages per window
-RATE_LIMIT_WINDOW = 60  # seconds
+MESSAGE_RATE_LIMIT = 10
+RATE_LIMIT_WINDOW = 60
 
+
+# ============================================
+# NEW: TELEGRAM NOTIFICATION MODULE
+# ============================================
+
+def send_telegram_notification(message_text, parse_mode='Markdown'):
+    """
+    Send notification to admin via Telegram bot
+    Runs asynchronously to not block the main thread
+    """
+    if not Config.TELEGRAM_NOTIFICATIONS_ENABLED:
+        return
+    
+    def send_async():
+        try:
+            url = f"https://api.telegram.org/bot{Config.TELEGRAM_BOT_TOKEN}/sendMessage"
+            payload = {
+                'chat_id': Config.TELEGRAM_CHAT_ID,
+                'text': message_text,
+                'parse_mode': parse_mode,
+                'disable_web_page_preview': True
+            }
+            
+            response = requests.post(url, json=payload, timeout=5)
+            
+            if response.status_code == 200:
+                print(f"[TELEGRAM] Notification sent successfully")
+            else:
+                print(f"[TELEGRAM] Failed to send: {response.status_code} - {response.text}")
+                
+        except Exception as e:
+            print(f"[TELEGRAM] Error sending notification: {e}")
+    
+    # Run in separate thread to not block
+    thread = threading.Thread(target=send_async, daemon=True)
+    thread.start()
+
+
+def format_telegram_new_user(username, room_id):
+    """Format notification for new user joining"""
+    current_time = datetime.now().strftime('%I:%M %p')
+    dashboard_url = Config.ADMIN_SERVER_URL or "http://localhost:5000"
+    
+    message = f"""🔔 *New Chat Request*
+
+👤 *User:* {username}
+🆔 *Room:* `{room_id}`
+⏰ *Time:* {current_time}
+
+[🔗 Open Dashboard]({dashboard_url})"""
+    
+    return message
+
+
+def format_telegram_user_waiting(username, room_id, wait_minutes):
+    """Format notification for user waiting too long"""
+    dashboard_url = Config.ADMIN_SERVER_URL or "http://localhost:5000"
+    
+    message = f"""⚠️ *User Waiting {wait_minutes}+ Minutes!*
+
+👤 *User:* {username}
+🆔 *Room:* `{room_id}`
+⏰ *Waiting:* {wait_minutes} minutes
+
+🔥 *High Priority*
+[🔗 Open Dashboard Now]({dashboard_url})"""
+    
+    return message
+
+
+def format_telegram_queue_status():
+    """Format notification with current queue status"""
+    dashboard_url = Config.ADMIN_SERVER_URL or "http://localhost:5000"
+    waiting_count = len(waiting_rooms)
+    
+    if waiting_count == 0:
+        return None
+    
+    message = f"""📊 *Queue Status*
+
+🔢 *{waiting_count} users waiting*
+
+"""
+    
+    # List up to 5 users
+    room_list = list(waiting_rooms.items())[:5]
+    for room_id, info in room_list:
+        username = info['username']
+        created = datetime.fromisoformat(info['created_at'])
+        wait_time = (datetime.now() - created).total_seconds() / 60
+        message += f"• {username} ({int(wait_time)}m)\n"
+    
+    if waiting_count > 5:
+        message += f"• +{waiting_count - 5} more...\n"
+    
+    message += f"\n[🔗 Open Dashboard]({dashboard_url})"
+    
+    return message
+
+
+# ============================================
+# EXISTING FUNCTIONS (with Telegram additions)
+# ============================================
 
 def rate_limit_check(session_id, limit=MESSAGE_RATE_LIMIT, window=RATE_LIMIT_WINDOW):
     """Check if user has exceeded rate limit"""
     current_time = time.time()
     user_data = rate_limit_storage[session_id]
     
-    # Reset counter if window has passed
     if current_time - user_data['reset_time'] > window:
         user_data['count'] = 0
         user_data['reset_time'] = current_time
     
-    # Check if limit exceeded
     if user_data['count'] >= limit:
         return False
     
@@ -76,10 +178,7 @@ def sanitize_input(text, max_length=1000):
     if not text or not isinstance(text, str):
         return None
     
-    # Strip whitespace and limit length
     text = text.strip()[:max_length]
-    
-    # Escape HTML to prevent XSS
     text = html.escape(text)
     
     return text if text else None
@@ -131,7 +230,6 @@ def handle_join(data):
         active_users[session_id] = username
         print(f"[SERVER] Admin authenticated (Session: {session_id})")
         
-        # Clean up old rooms on admin login
         cleanup_old_rooms()
         
         emit('admin_connected', {
@@ -159,6 +257,11 @@ def handle_join(data):
             'message': f'Room created! Waiting for Admin to join...'
         })
 
+        # NEW: Send Telegram notification
+        notification_message = format_telegram_new_user(username, room_id)
+        send_telegram_notification(notification_message)
+        print(f"[TELEGRAM] Notification sent for user: {username}")
+
         # Notify all connected admins
         for sid, uname in active_users.items():
             if uname == ADMIN_USERNAME:
@@ -168,6 +271,9 @@ def handle_join(data):
                     'created_at': waiting_rooms[room_id]['created_at']
                 }, room=sid)
 
+
+# ... REST OF YOUR EXISTING server.py CODE STAYS THE SAME ...
+# (All other @socketio.on handlers remain unchanged)
 
 @socketio.on('list_rooms')
 def handle_list_rooms():
@@ -239,7 +345,6 @@ def handle_message(data):
     message_text = sanitize_input(data.get('message', ''))
     room_id = session_rooms.get(session_id)
 
-    # Rate limiting check
     if not rate_limit_check(session_id):
         emit('system_message', {
             'message': 'Rate limit exceeded. Please slow down.'
@@ -271,7 +376,6 @@ def handle_message(data):
 
     print(f"[Room:{room_id}] {username}: {message_text}")
 
-    # Clear typing indicator when message is sent
     typing_key = f"{room_id}:{session_id}"
     if typing_key in typing_status:
         del typing_status[typing_key]
@@ -309,19 +413,16 @@ def handle_disconnect():
     username = active_users.get(session_id, 'Unknown')
     room_id = session_rooms.get(session_id)
 
-    # Clear typing status
     if room_id:
         typing_key = f"{room_id}:{session_id}"
         if typing_key in typing_status:
             del typing_status[typing_key]
 
-    # Remove waiting rooms
     rooms_to_remove = [rid for rid, info in waiting_rooms.items() if info['session_id'] == session_id]
     for rid in rooms_to_remove:
         del waiting_rooms[rid]
         print(f"[SERVER] Removed waiting room: {rid}")
 
-    # Handle active rooms
     if room_id and room_id in active_rooms:
         emit('user_left', {
             'username': username,
@@ -331,7 +432,6 @@ def handle_disconnect():
         del active_rooms[room_id]
         print(f"[SERVER] Room {room_id} closed")
 
-    # Cleanup
     if session_id in active_users:
         del active_users[session_id]
     if session_id in session_rooms:
@@ -345,6 +445,10 @@ def handle_disconnect():
 if __name__ == '__main__':
     print("=" * 50)
     print("WebSocket Chat Server - Enhanced Version")
+    if Config.TELEGRAM_NOTIFICATIONS_ENABLED:
+        print("✅ Telegram Notifications: ENABLED")
+    else:
+        print("⚠️  Telegram Notifications: DISABLED")
     print("=" * 50)
 
     socketio.run(
