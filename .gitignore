@@ -1,4 +1,4 @@
-# Environment variables with real secrets
+# Environment variables
 .env
 
 # Python
@@ -7,6 +7,9 @@ __pycache__/
 *$py.class
 *.so
 .Python
+env/
+venv/
+ENV/
 build/
 develop-eggs/
 dist/
@@ -23,19 +26,16 @@ wheels/
 .installed.cfg
 *.egg
 
-# Virtual environments
-venv/
-env/
-ENV/
-.venv
-
-# IDEs
+# IDE
 .vscode/
 .idea/
 *.swp
 *.swo
-*.swn
+*~
 
 # OS
 .DS_Store
 Thumbs.db
+
+# Logs
+*.log
