@@ -25,6 +25,8 @@ app.config.from_object(Config)
 # CORS configuration for Render.com deployment
 ALLOWED_ORIGINS = [
     "https://chat-with-mani.onrender.com",
+    "https://manikumar.space",
+    "https://www.manikumar.space",
     "http://localhost:5000",
 ]
 
