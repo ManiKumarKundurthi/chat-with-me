@@ -388,7 +388,8 @@ def main():
                 continue
 
             # Get admin server URL from environment
-            server_url = os.getenv('ADMIN_SERVER_URL', 'http://localhost:5000')
+            # server_url = os.getenv('ADMIN_SERVER_URL', 'http://localhost:5000')
+            server_url = os.getenv('ADMIN_SERVER_URL', 'https://manikumar.space')
             print_message(f"Connecting to: {server_url}", 'cyan')
 
             break
@@ -408,7 +409,8 @@ def main():
             password = ""  # No password for regular users
 
             # Get user server URL from environment
-            server_url = os.getenv('USER_SERVER_URL', 'http://localhost:5000')
+            # server_url = os.getenv('USER_SERVER_URL', 'http://localhost:5000')
+            server_url = os.getenv('USER_SERVER_URL', 'https://manikumar.space')
             print_message(f"Connecting to: {server_url}", 'cyan')
 
             break
